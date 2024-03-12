@@ -184,7 +184,7 @@
         </div>
         <div class="grid justify-center">
             <div class="w-fit">
-            {!! QrCode::size(128)->merge('\public\storage\Logo.png')
+            {!! QrCode::size(128)
                 ->generate("http://192.168.77.209/royal_backend/public/leave/download?id={$id}&ids={$ids}") 
             !!}
             </div>

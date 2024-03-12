@@ -3,7 +3,8 @@
     "type": "module",
     "scripts": {
         "dev": "vite",
-        "build": "vite build"
+        "build": "vite build",
+        "install-puppeteer": "npm --prefix ./node_modules/puppeteer run postinstall"
     },
     "devDependencies": {
         "autoprefixer": "^10.4.18",
