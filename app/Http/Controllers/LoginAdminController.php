@@ -15,7 +15,8 @@ class LoginAdminController extends Controller
             'id_staff' => 'required',
             'username' => 'required',
             'password' => 'required',
-            'role' => 'required'
+            'role' => 'required',
+            'id_unit' => 'required'
         ]);
 
         $input['password'] = bcrypt($input['password']);

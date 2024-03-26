@@ -39,7 +39,7 @@ class UserController extends Controller
         $result = DB::table('hr_staff_info AS si')
         ->join('users AS u', 'si.FID', '=', 'u.id_staff')
         ->join('hr_unit AS hu', 'si.DEPT_NAME', '=', 'hu.IdUnit')
-        ->select('si.FID AS FID', 'si.Nama AS Nama', 'si.NIK', 'u.username', 'u.role', 'si.JABATAN', 'si.TGL_MASUK', 'si.Notelp', 'hu.NamaUnit')
+        ->select('si.FID AS FID', 'si.Nama AS Nama', 'si.NIK', 'u.username', 'u.role', 'si.JABATAN', 'si.TGL_MASUK', 'si.Notelp', 'hu.NamaUnit', 'si.DEPT_NAME as id_unit')
         ->where('u.id', '=', $id)
         ->first();
 
@@ -83,15 +83,16 @@ class UserController extends Controller
         $input = $request->validate([
             'id_staff' => 'required',
             'username' => 'required',
-            'role' => 'required'
+            'role' => 'required',
+            'id_unit' => 'required',
         ]);
         $result = User::where('id', $id)
         ->first();
 
 
         if ($result) {
-            if (isset($input['password']) && $input['password'] !== null) {
-                $input['password'] = bcrypt($input['password']);
+            if ($request->input('password') != "") {
+                $input['password'] = bcrypt($request->input('password'));
             }
         
             $result->fill($input);

@@ -6,6 +6,7 @@ use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Auth;
 use Spatie\LaravelPdf\Facades\Pdf;
+use Telegram\Bot\Laravel\Facades\Telegram;
 
 class OutOfDutyPermitController extends Controller
 {
@@ -15,26 +16,26 @@ class OutOfDutyPermitController extends Controller
         $search = $request->input('search');
 
         $data = DB::table('out_of_duty AS od')
-        ->select('od.*', 'si.Nama AS Nama', 'u.NamaUnit AS Unit')
-        ->join('hr_staff_info AS si', 'od.id_staff', '=', 'si.FID')
-        ->join('hr_unit AS u', 'si.DEPT_NAME', '=', 'u.IdUnit')
+        ->select('od.*', 'si.name AS Nama', 'u.NamaUnit AS Unit')
+        ->join('staff AS si', 'od.id_staff', '=', 'si.id')
+        ->join('hr_unit AS u', 'si.id_unit', '=', 'u.IdUnit')
         ->where(function ($query) use ($search) {
             $query
                 ->where(function ($query) use ($search) {
                     $query->where('track', 2)
-                        ->where('status', 1);
+                        ->where('od.status', 1);
                 })
                 ->orWhere(function ($query) use ($search) {
                     $query->where('track', 3)
-                        ->where('status', 1);
+                        ->where('od.status', 1);
                 })
                 ->orWhere(function ($query) use ($search) {
                     $query->where('track', 4)
-                        ->where('status', 1);
+                        ->where('od.status', 1);
                 })
                 ->orWhere(function ($query) use ($search) {
                     $query->where('track', 5)
-                        ->where('status', 1);
+                        ->where('od.status', 1);
                 })
                 ->orWhere('track', 6);
         })
@@ -60,6 +61,52 @@ class OutOfDutyPermitController extends Controller
             'data' => $data
         ], 200);
     }
+    
+    public function indexAll() {
+        $data = DB::table('out_of_duty AS od')
+        ->select('*')
+        ->where('track', 6)
+        ->where('status', 1)
+        ->get();
+
+        if($data->isEmpty()){
+            return response()->json([
+                'status' => false,
+                'message' => 'Data not found',
+                'data' => null
+            ], 200);
+        }
+
+        return response()->json([
+            'status' => true,
+            'message' => 'Data Out of Duty',
+            'data' => $data
+        ], 200);
+    }
+
+    public function indexAllCalendar() {
+
+        $data = DB::table('out_of_duty AS od')
+        ->select('*', 'si.Nama')
+        ->join('hr_staff_info AS si', 'od.id_staff', '=', 'si.FID')
+        ->where('track', 6)
+        ->where('status', 1)
+        ->get();
+
+        if($data->isEmpty()){
+            return response()->json([
+                'status' => false,
+                'message' => 'Data not found',
+                'data' => null
+            ], 200);
+        }
+
+        return response()->json([
+            'status' => true,
+            'message' => 'Data Out of Duty',
+            'data' => $data
+        ], 200);
+    }
 
     public function departmentIndex(Request $request) {
         $department = DB::table('hr_staff_info AS si')
@@ -70,6 +117,31 @@ class OutOfDutyPermitController extends Controller
         ->select('od.*', 'si.Nama AS Nama')
         ->join('hr_staff_info AS si', 'od.id_staff', '=', 'si.FID')
         ->where('si.DEPT_NAME', '=', $department->DEPT_NAME)
+        ->where('track', 6)
+        ->where('status', 1)
+        ->get();
+
+        if($data->isEmpty()){
+            return response()->json([
+                'status' => false,
+                'message' => 'Data not found',
+                'data' => null
+            ], 200);
+        }
+
+        return response()->json([
+            'status' => true,
+            'message' => 'Data Out of Duty',
+            'data' => $data
+        ], 200);
+    }
+    
+    public function indexbyEmployeeApproved(Request $request) {
+
+        $data = DB::table('out_of_duty AS od')
+        ->select('od.*', 'si.Nama AS Nama')
+        ->join('hr_staff_info AS si', 'od.id_staff', '=', 'si.FID')
+        ->where('si.FID', '=', session('id_staff'))
         ->where('track', 6)
         ->where('status', 1)
         ->get();
@@ -123,23 +195,71 @@ class OutOfDutyPermitController extends Controller
         $filter = $request->input('filter', 'created_at');
         $sort = $request->input('sort', 'desc');
         $search = $request->input('search');
+
+        if($filter == 'created_at'){
+            $filter = 'od.created_at';
+        }
         
-        $user = DB::table('hr_staff_info AS si')
-        ->where('si.FID', '=', Auth::user()->id_staff)
-        ->first();
         $data = DB::table('out_of_duty AS od')
-        ->join('hr_staff_info AS si', 'od.id_staff', '=', 'si.FID')
-        ->where('si.DEPT_NAME', '=', $user->DEPT_NAME)
-        // ->where(function ($query){
-        //     $query->where('track', 2)
-        //         ->orWhere('track', 3)
-        //         ->orWhere('track', 4);
-        // })
-        ->where('status', 1)
+        ->select('od.*', 'si.name', 'u.role')
+        ->join('staff AS si', 'od.id_staff', '=', 'si.id')
+        ->leftJoin(DB::raw('(SELECT id_staff, id, role, deleted_at
+                             FROM users
+                             WHERE deleted_at IS NULL) AS u'), 'u.id_staff', '=', 'si.id')
+        ->where('si.id_unit', '=', Auth::user()->id_unit)
+        ->where('od.status', '=', 1)
+        ->where(function ($query) {
+            $query->where('u.role', '!=', 4)
+                  ->orWhereNull('u.role');
+        })
         ->where(function ($query) use ($search) {
             $query->where('destination', 'LIKE', '%'.$search.'%')
                 ->orWhere('start_date', 'LIKE', '%'.$search.'%')
-                ->orWhere('created_at', 'LIKE', '%'.$search.'%');
+                ->orWhere('od.created_at', 'LIKE', '%'.$search.'%');
+        })
+        ->orderBy($filter, $sort)
+        ->paginate(10);
+        if($data->isEmpty()){
+            return response()->json([
+                'status' => false,
+                'message' => 'Data not found',
+                'data' => null
+            ], 200);
+        }
+
+        return response()->json([
+            'status' => true,
+            'message' => 'Data Out of Duty',
+            'data' => $data
+        ], 200);
+    }
+
+    public function gmIndex(Request $request) {
+        $filter = $request->input('filter', 'created_at');
+        $sort = $request->input('sort', 'desc');
+        $search = $request->input('search');
+
+        $data = DB::table('out_of_duty AS od')
+        ->select('od.*', 'si.Nama AS Nama', 'u.role AS role')
+        ->join('hr_staff_info AS si', 'od.id_staff', '=', 'si.FID')
+        ->join('users AS u', 'si.FID', '=', 'u.id_staff')
+        ->where(function($query) {
+            $query->where(function($query) {
+                $query->where('status', 0)
+                    ->orWhere('status', 1);
+            })
+            ->orWhere(function($query) {
+                $query->where('track', 1)
+                    ->orWhere('track', 5)
+                    ->orWhere('track', 6);
+            });
+        })
+        ->where('u.role', 4)    
+        ->where('u.deleted_at', null)
+        ->where(function ($query) use ($search) {
+            $query->where('destination', 'LIKE', '%'.$search.'%')
+                ->orWhere('start_date', 'LIKE', '%'.$search.'%')
+                ->orWhere('od.created_at', 'LIKE', '%'.$search.'%');
         })
         ->orderBy($filter, $sort)
         ->paginate(10);
@@ -167,8 +287,8 @@ class OutOfDutyPermitController extends Controller
         ]);
 
         $id = session('id_staff');
-        $data = DB::table('hr_staff_info AS si')
-            ->join('hr_unit AS u', 'si.DEPT_NAME', '=', 'u.IdUnit')
+
+        $staff = DB::table('hr_staff_info')
             ->where('FID', $id)
             ->first();
 
@@ -178,6 +298,38 @@ class OutOfDutyPermitController extends Controller
         $input['track'] = 1;
         $input['created_at'] = now();
         $input['updated_at'] = now();
+
+        $users = DB::table('users')
+        ->join('hr_staff_info', 'users.id_staff', '=', 'hr_staff_info.FID')
+        ->join('telegram_session', 'telegram_session.id_staff', '=', 'hr_staff_info.FID')
+        ->select('telegram_session.id')
+        ->where('users.id_unit', $staff->DEPT_NAME)
+        ->where('telegram_session.status', 'Active')
+        ->where(function($query) {
+            $query->where('role', 2)
+                ->orWhere('role', 3)
+                ->orWhere('role', 4);
+        })
+        ->get();
+
+        if($users){
+            $message = "<pre>";
+            $message .= "<b>Out of Duty request from :</b>";
+            $message .= "\nName        : " . $staff->Nama;
+            $message .= "\nDestination : " . $input['destination'];
+            $message .= "\nStart Date  : " . date('l, d F Y, H:i', strtotime($input['start_date']));
+            $message .= "\nEnd Date    : " . date('l, d F Y, H:i', strtotime($input['end_date']));
+            $message .= "\nPurpose     : " . $input['purpose'];
+            $message .= "</pre>";
+
+            foreach($users as $user){
+                Telegram::sendMessage([
+                    'chat_id' => $user->id,
+                    'text' => $message,
+                    'parse_mode' => 'HTML'
+                ]);
+            }
+        }
 
         $outOfDuty = DB::table('out_of_duty')->insert($input);
 
@@ -316,6 +468,7 @@ class OutOfDutyPermitController extends Controller
         $data->date = date('l, d F Y', strtotime($data->start_date));
         $data->start_time = date('H:m', strtotime($data->start_date));
         $data->end_time = date('H:m', strtotime($data->end_date));
+        $data->name = mb_convert_case($data->name, MB_CASE_TITLE, 'UTF-8');
         for($i = 0; $i < count($user); $i++){
             $user[$i]->name = mb_convert_case($user[$i]->name, MB_CASE_TITLE, 'UTF-8');
         }

@@ -5,9 +5,11 @@ namespace App\Http\Controllers;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Validator;
+use Spatie\Browsershot\Browsershot;
 use Spatie\LaravelPdf\Facades\Pdf;
 use Spatie\LaravelPdf\Enums\Unit;
-
+use Telegram\Bot\Laravel\Facades\Telegram;
 
 class LeavePermitController extends Controller
 {
@@ -22,9 +24,9 @@ class LeavePermitController extends Controller
             ->leftJoin('manager_on_duty as md', 'md.id', '=', 'lrd.id_mod')
             ->leftJoin('extra_off as eo', 'eo.id', '=', 'lre.id_eo')
             ->leftJoin('annual_leave as al', 'al.id', '=', 'lra.id_al')
-            ->leftJoin('hr_staff_info as md_hr', 'md_hr.Fid', '=', 'md.id_staff')
-            ->leftJoin('hr_staff_info as eo_hr', 'eo_hr.Fid', '=', 'eo.id_staff')
-            ->leftJoin('hr_staff_info as al_hr', 'al_hr.Fid', '=', 'al.id_staff')
+            ->leftJoin('staff as md_hr', 'md_hr.id', '=', 'md.id_staff')
+            ->leftJoin('staff as eo_hr', 'eo_hr.id', '=', 'eo.id_staff')
+            ->leftJoin('staff as al_hr', 'al_hr.id', '=', 'al.id_staff')
             ->select(
                 'md.id_staff',
                 'lr.id',
@@ -33,32 +35,32 @@ class LeavePermitController extends Controller
                 'lr.status',
                 'lr.track',
                 DB::raw('CASE
-                    WHEN md.id_staff IS NOT null THEN md_hr.Nama
-                    WHEN eo.id_staff IS NOT null THEN eo_hr.Nama
-                    WHEN al.id_staff IS NOT null THEN al_hr.Nama
+                    WHEN md.id_staff IS NOT null THEN md_hr.name
+                    WHEN eo.id_staff IS NOT null THEN eo_hr.name
+                    WHEN al.id_staff IS NOT null THEN al_hr.name
                 END AS name')
             )
             ->where(function ($query){
                 $query
                     ->where(function ($query){
                         $query->where('track', 2)
-                            ->where('status', 1);
+                            ->where('lr.status', 1);
                     })
                     ->orWhere(function ($query){
                         $query->where('track', 3)
-                            ->where('status', 1);
+                            ->where('lr.status', 1);
                     })
                     ->orWhere(function ($query){
                         $query->where('track', 4)
-                            ->where('status', 1);
+                            ->where('lr.status', 1);
                     })
                     ->orWhere(function ($query) {
                         $query->where('track', 5)
-                            ->where('status', 1);
+                            ->where('lr.status', 1);
                     })
                     ->orWhere('track', 6);
             })
-            ->groupBy('lr.id', 'lr.request_date', 'lr.note', 'lr.status', 'lr.track', 'md.id_staff', 'eo.id_staff', 'al.id_staff', 'md_hr.Nama', 'eo_hr.Nama', 'al_hr.Nama')
+            ->groupBy('lr.id', 'lr.request_date', 'lr.note', 'lr.status', 'lr.track', 'md.id_staff', 'eo.id_staff', 'al.id_staff', 'md_hr.name', 'eo_hr.name', 'al_hr.name')
             ->orderBy($filter, $sort)
             ->paginate(10);
 
@@ -73,53 +75,43 @@ class LeavePermitController extends Controller
         $filter = $request->input('filter', 'request_date');
         $sort = $request->input('sort', 'desc');
 
-        $id = Auth::user()->id_staff;
-
-        $user = DB::table('users')
-            ->join('hr_staff_info', 'users.id_staff', '=', 'hr_staff_info.FID')
-            ->where('id_staff', '=', $id)
-            ->first();
-
         $data = DB::table('leave_request AS lr')
-            ->leftJoin('leave_request_dp as lrd', 'lrd.id_leave_request', '=', 'lr.id')
-            ->leftJoin('leave_request_eo as lre', 'lre.id_leave_request', '=', 'lr.id')
-            ->leftJoin('leave_request_al as lra', 'lra.id_leave_request', '=', 'lr.id')
-            ->leftJoin('manager_on_duty as md', 'md.id', '=', 'lrd.id_mod')
-            ->leftJoin('extra_off as eo', 'eo.id', '=', 'lre.id_eo')
-            ->leftJoin('annual_leave as al', 'al.id', '=', 'lra.id_al')
-            ->leftJoin('hr_staff_info as md_hr', 'md_hr.Fid', '=', 'md.id_staff')
-            ->leftJoin('hr_staff_info as eo_hr', 'eo_hr.Fid', '=', 'eo.id_staff')
-            ->leftJoin('hr_staff_info as al_hr', 'al_hr.Fid', '=', 'al.id_staff')
             ->select(
                 'lr.id',
                 'lr.request_date',
                 'lr.note',
                 'lr.status',
                 'lr.track',
-                DB::raw('CASE
-                    WHEN md.id_staff IS NOT null THEN md_hr.Nama
-                    WHEN eo.id_staff IS NOT null THEN eo_hr.Nama
-                    WHEN al.id_staff IS NOT null THEN al_hr.Nama
-                END AS name')
+                'si.name'
             )
-            ->where(function ($query) use ($user) {
-                $query->where('md_hr.DEPT_NAME', '=', $user->DEPT_NAME)
-                    ->orWhere('eo_hr.DEPT_NAME', '=', $user->DEPT_NAME)
-                    ->orWhere('al_hr.DEPT_NAME', '=', $user->DEPT_NAME);
+            ->leftJoin('leave_request_dp AS lrd', 'lrd.id_leave_request', '=', 'lr.id')
+            ->leftJoin('leave_request_eo AS lre', 'lre.id_leave_request', '=', 'lr.id')
+            ->leftJoin('leave_request_al AS lra', 'lra.id_leave_request', '=', 'lr.id')
+            ->leftJoin('manager_on_duty AS md', 'md.id', '=', 'lrd.id_mod')
+            ->leftJoin('extra_off AS eo', 'eo.id', '=', 'lre.id_eo')
+            ->leftJoin('annual_leave AS al', 'al.id', '=', 'lra.id_al')
+            ->leftJoin('staff AS si', function($join) {
+                $join->on('si.id', '=', 'md.id_staff')
+                    ->orOn('si.id', '=', 'eo.id_staff')
+                    ->orOn('si.id', '=', 'al.id_staff');
             })
-            ->where(function ($query){
-                $query
-                    ->where(function ($query){
-                        $query->where('track', 1)
-                            ->where('status', 1);
-                    })
-                    ->orWhere('track', 2    )
-                    ->orWhere('track', 3)
-                    ->orWhere('track', 4)
-                    ->orWhere('track', 5)
-                    ->orWhere('track', 6);
+            ->leftJoin(DB::raw('(SELECT id_staff, id, role, deleted_at
+                FROM users
+                WHERE deleted_at IS NULL) AS us'), 'us.id_staff', '=', 'si.id')
+            ->where('si.id_unit', Auth::user()->id_unit)
+            ->where(function ($query) {
+                $query->where(function ($query) {
+                    $query->where('lr.track', 1)
+                        ->where('lr.status', 1);
+                })
+                ->orWhereIn('lr.track', [2, 3, 4, 5, 6]);
             })
-            ->groupBy('lr.id', 'lr.request_date', 'lr.note', 'lr.status', 'lr.track', 'md.id_staff', 'eo.id_staff', 'al.id_staff', 'md_hr.Nama', 'eo_hr.Nama', 'al_hr.Nama')
+            ->where(function ($query) {
+                $query->where('us.role', '<', Auth::user()->role)
+                    ->orWhereNull('us.role');
+            })
+            ->whereNull('us.deleted_at')
+            ->groupBy('lr.id', 'lr.request_date', 'lr.note', 'lr.status', 'lr.track', 'md.id_staff', 'eo.id_staff', 'al.id_staff', 'si.name')
             ->orderBy($filter, $sort)
             ->paginate(10);
 
@@ -130,32 +122,142 @@ class LeavePermitController extends Controller
         ], 200);
     }
 
-    public function indexbyDepartmentApproved (Request $request) {
+    public function indexbyGm (Request $request) {
+        $filter = $request->input('filter', 'request_date');
+        $sort = $request->input('sort', 'desc');
 
-        $id = Auth::user()->id_staff;
+        $data = DB::table('leave_request AS lr')
+            ->select(
+                'lr.id',
+                'lr.request_date',
+                'lr.note',
+                'lr.status',
+                'lr.track',
+                'si.name'
+            )
+            ->leftJoin('leave_request_dp AS lrd', 'lrd.id_leave_request', '=', 'lr.id')
+            ->leftJoin('leave_request_eo AS lre', 'lre.id_leave_request', '=', 'lr.id')
+            ->leftJoin('leave_request_al AS lra', 'lra.id_leave_request', '=', 'lr.id')
+            ->leftJoin('manager_on_duty AS md', 'md.id', '=', 'lrd.id_mod')
+            ->leftJoin('extra_off AS eo', 'eo.id', '=', 'lre.id_eo')
+            ->leftJoin('annual_leave AS al', 'al.id', '=', 'lra.id_al')
+            ->leftJoin('staff AS si', function($join) {
+                $join->on('si.id', '=', 'md.id_staff')
+                    ->orOn('si.id', '=', 'eo.id_staff')
+                    ->orOn('si.id', '=', 'al.id_staff');
+            })
+            ->leftJoin('users AS us', 'us.id_staff', '=', 'si.id')
+            ->where(function ($query) {
+                $query->where(function ($query) {
+                    $query->where('lr.track', 1)
+                        ->where('lr.status', 1);
+                })
+                ->orWhereIn('lr.track', [2, 3, 4, 5, 6]);
+            })
+            ->where(function ($query) {
+                $query->where('us.role', '=', 4);
+            })
+            ->whereNull('us.deleted_at')
+            ->groupBy('lr.id', 'lr.request_date', 'lr.note', 'lr.status', 'lr.track', 'md.id_staff', 'eo.id_staff', 'al.id_staff', 'si.name')
+            ->orderBy($filter, $sort)
+            ->paginate(10);
 
-        $user = DB::table('users')
-            ->join('hr_staff_info', 'users.id_staff', '=', 'hr_staff_info.FID')
-            ->where('id_staff', '=', $id)
-            ->first();
+        return response()->json([
+            'status' => true,
+            'message' => 'Data Leave Request',
+            'data' => $data
+        ], 200);
+    }
+
+    public function indexAllCalendar (Request $request) {
 
         $dp = DB::table('leave_request_dp as lrd')
             ->join('manager_on_duty as md', 'lrd.id_mod', '=', 'md.id')
-            ->join('hr_staff_info as md_hr', 'md.id_staff', '=', 'md_hr.Fid')
-            ->select('lrd.date as replace_date', 'md.date', 'md_hr.Nama')
+            ->join('staff as md_hr', 'md.id_staff', '=', 'md_hr.id')
+            ->select('lrd.date as replace_date', 'md.date', 'md_hr.name')
             ->where('lrd.approval', 2)
             ->get();
         $eo = DB::table('leave_request_eo as lre')
             ->join('extra_off as eo', 'lre.id_eo', '=', 'eo.id')
-            ->join('hr_staff_info as eo_hr', 'eo.id_staff', '=', 'eo_hr.Fid')
-            ->select('lre.date as replace_date', 'eo.date', 'eo_hr.Nama')
+            ->join('staff as eo_hr', 'eo.id_staff', '=', 'eo_hr.id')
+            ->select('lre.date as replace_date', 'eo.date', 'eo_hr.name')
             ->where('lre.approval', 2)
             ->get();
         $al = DB::table('leave_request_al as lra')
             ->join('annual_leave as al', 'lra.id_al', '=', 'al.id')
-            ->join('hr_staff_info as al_hr', 'al.id_staff', '=', 'al_hr.Fid')
-            ->select('lra.date as replace_date', 'al.date', 'al_hr.Nama')
+            ->join('staff as al_hr', 'al.id_staff', '=', 'al_hr.id')
+            ->select('lra.date as replace_date', 'al.date', 'al_hr.name')
             ->where('lra.approval', 2)
+            ->get();
+
+        return response()->json([
+            'status' => true,
+            'message' => 'Data Leave Request',
+            'dp' => $dp,
+            'eo' => $eo,
+            'al' => $al
+        ], 200);
+    }
+
+    public function indexbyDepartmentApproved (Request $request) {
+
+        $id = Auth::user()->id_unit;
+
+        $dp = DB::table('leave_request_dp as lrd')
+            ->join('manager_on_duty as md', 'lrd.id_mod', '=', 'md.id')
+            ->join('staff as md_hr', 'md.id_staff', '=', 'md_hr.id')
+            ->select('lrd.date as replace_date', 'md.date', 'md_hr.name')
+            ->where('lrd.approval', 2)
+            ->where('md_hr.id_unit', '=', $id)
+            ->get();
+        $eo = DB::table('leave_request_eo as lre')
+            ->join('extra_off as eo', 'lre.id_eo', '=', 'eo.id')
+            ->join('staff as eo_hr', 'eo.id_staff', '=', 'eo_hr.id')
+            ->select('lre.date as replace_date', 'eo.date', 'eo_hr.name')
+            ->where('lre.approval', 2)
+            ->where('eo_hr.id_unit', '=', $id)
+            ->get();
+        $al = DB::table('leave_request_al as lra')
+            ->join('annual_leave as al', 'lra.id_al', '=', 'al.id')
+            ->join('staff as al_hr', 'al.id_staff', '=', 'al_hr.id')
+            ->select('lra.date as replace_date', 'al.date', 'al_hr.name')
+            ->where('lra.approval', 2)
+            ->where('al_hr.id_unit', '=', $id)
+            ->get();
+
+        return response()->json([
+            'status' => true,
+            'message' => 'Data Leave Request',
+            'dp' => $dp,
+            'eo' => $eo,
+            'al' => $al
+        ], 200);
+    }
+
+    public function indexbyEmployeeApproved (Request $request) {
+
+        $id = session('id_staff');
+
+        $dp = DB::table('leave_request_dp as lrd')
+            ->join('manager_on_duty as md', 'lrd.id_mod', '=', 'md.id')
+            ->join('staff as md_hr', 'md.id_staff', '=', 'md_hr.id')
+            ->select('lrd.date as replace_date', 'md.date', 'md_hr.name')
+            ->where('lrd.approval', 2)
+            ->where('md_hr.id', '=', $id)
+            ->get();
+        $eo = DB::table('leave_request_eo as lre')
+            ->join('extra_off as eo', 'lre.id_eo', '=', 'eo.id')
+            ->join('staff as eo_hr', 'eo.id_staff', '=', 'eo_hr.id')
+            ->select('lre.date as replace_date', 'eo.date', 'eo_hr.name')
+            ->where('lre.approval', 2)
+            ->where('eo_hr.id', '=', $id)
+            ->get();
+        $al = DB::table('leave_request_al as lra')
+            ->join('annual_leave as al', 'lra.id_al', '=', 'al.id')
+            ->join('staff as al_hr', 'al.id_staff', '=', 'al_hr.id')
+            ->select('lra.date as replace_date', 'al.date', 'al_hr.name')
+            ->where('lra.approval', 2)
+            ->where('al_hr.id', '=', $id)
             ->get();
 
         return response()->json([
@@ -201,7 +303,7 @@ class LeavePermitController extends Controller
             ->where('md.id_staff', session('id_staff'))
             ->where(function ($query) {
                 $query->whereNull('lrd.approval')
-                    ->orWhereNotIn('lrd.approval', [1, 2, 3]);
+                    ->orWhereNotIn('lrd.approval', [1, 2]);
             })
             ->whereNotExists(function ($subquery) {
                 $subquery->select(DB::raw(1))
@@ -223,7 +325,7 @@ class LeavePermitController extends Controller
         ->where('eo.id_staff', '=', session('id_staff'))
         ->where(function ($query) {
             $query->whereNull('lre.approval')
-                ->orWhereNotIn('lre.approval', [1, 2, 3]);
+                ->orWhereNotIn('lre.approval', [1, 2]);
         })
         ->whereNotExists(function ($subquery) {
             $subquery->select(DB::raw(1))
@@ -245,7 +347,7 @@ class LeavePermitController extends Controller
         ->where('al.id_staff', '=', session('id_staff'))
         ->where(function ($query) {
             $query->whereNull('lra.approval')
-                ->orWhereNotIn('lra.approval', [1, 2, 3]);
+                ->orWhereNotIn('lra.approval', [1, 2]);
         })
         ->whereNotExists(function ($subquery) {
             $subquery->select(DB::raw(1))
@@ -270,6 +372,263 @@ class LeavePermitController extends Controller
         ], 200);
     }
 
+    public function countEmployeeQuota () {
+        $dp = DB::table(function($subquery) {
+                $subquery->select(
+                        DB::raw('SUM(CASE WHEN (md.expire > NOW() OR md.expire IS NULL) AND (lrd.approval IS NULL OR lrd.approval IN (0,3)) THEN 1 ELSE 0 END) AS quota'),
+                        DB::raw('SUM(CASE WHEN lrd.approval = 2 THEN 1 ELSE 0 END) AS used'),
+                        DB::raw('SUM(CASE WHEN md.expire < NOW() AND (lrd.approval NOT IN (1,2) OR lrd.approval IS null) THEN 1 ELSE 0 END) AS expired'),
+                        DB::raw('SUM(CASE WHEN lrd.approval = 1 THEN 1 ELSE 0 END) AS pending'),
+                        DB::raw('COUNT(DISTINCT md.id) AS total')
+                    )
+                    ->from('manager_on_duty AS md')
+                    ->leftJoin(DB::raw('(SELECT 
+                                            id_mod, 
+                                            approval
+                                        FROM 
+                                            leave_request_dp
+                                        GROUP BY 
+                                            id_mod, approval) AS lrd'), 'md.id', '=', 'lrd.id_mod')
+                    ->where('md.id_staff', session('id_staff'))
+                    ->where(function ($query) {
+                        $query->whereRaw('md.expire > DATE_FORMAT(NOW(), "%Y-%m-01")')
+                            ->orWhereNull('md.expire');
+                    })
+                    ->groupBy('md.id');
+            }, 'quota')
+            ->select(
+                DB::raw('SUM(CASE WHEN quota.quota > 0 THEN 1 ELSE 0 END) as quota'),
+                DB::raw('SUM(CASE WHEN quota.used > 0 THEN 1 ELSE 0 END) as used'),
+                DB::raw('SUM(CASE WHEN quota.pending > 0 THEN 1 ELSE 0 END) as pending'),
+                DB::raw('SUM(CASE WHEN quota.expired > 0 THEN 1 ELSE 0 END) as expired'),
+                DB::raw('SUM(CASE WHEN quota.total > 0 THEN 1 ELSE 0 END) as total')
+            )
+            ->first();
+
+        $dpBalance = [];
+        if ($dp) {
+            $dpBalance[] = [
+                'id' => 'quota',
+                'label' => 'Quota',
+                'value' => $dp->quota,
+                'color' => 'hsl(130, 70%, 50%)'
+
+            ];
+            $dpBalance[] = [
+                'id' => 'used',
+                'label' => 'Used',
+                'value' => $dp->used,
+                'color' => 'hsl(221, 70%, 50%)'
+            ];
+            $dpBalance[] = [
+                'id' => 'pending',
+                'label' => 'Pending',
+                'value' => $dp->pending,
+                'color' => 'hsl(54, 70%, 50%)'
+            ];
+            $dpBalance[] = [
+                'id' => 'expired',
+                'label' => 'Expired',
+                'value' => $dp->expired,
+                'color' => 'hsl(15, 70%, 50%)'
+            ];
+        }
+        $eo = DB::table(function($subquery) {
+                $subquery->select(
+                        DB::raw('SUM(CASE WHEN (eo.expire > NOW() OR eo.expire IS NULL) AND (lre.approval IS NULL OR lre.approval IN (0,3)) THEN 1 ELSE 0 END) AS quota'),
+                        DB::raw('SUM(CASE WHEN lre.approval = 2 THEN 1 ELSE 0 END) AS used'),
+                        DB::raw('SUM(CASE WHEN eo.expire < NOW() AND (lre.approval NOT IN (1,2) OR lre.approval IS null) THEN 1 ELSE 0 END) AS expired'),
+                        DB::raw('SUM(CASE WHEN lre.approval = 1 THEN 1 ELSE 0 END) AS pending'),
+                        DB::raw('COUNT(DISTINCT eo.id) AS total')
+                    )
+                    ->from('extra_off AS eo')
+                    ->leftJoin(DB::raw('(SELECT 
+                                            id_eo, 
+                                            approval
+                                        FROM 
+                                            leave_request_eo
+                                        GROUP BY 
+                                            id_eo, approval) AS lre'), 'eo.id', '=', 'lre.id_eo')
+                    ->where('eo.id_staff', session('id_staff'))
+                    ->where(function ($query) {
+                        $query->whereRaw('eo.expire > DATE_FORMAT(NOW(), "%Y-%m-01")')
+                            ->orWhereNull('eo.expire');
+                    })
+                    ->groupBy('eo.id');
+            }, 'quota')
+            ->select(
+                DB::raw('SUM(CASE WHEN quota.quota > 0 THEN 1 ELSE 0 END) as quota'),
+                DB::raw('SUM(CASE WHEN quota.used > 0 THEN 1 ELSE 0 END) as used'),
+                DB::raw('SUM(CASE WHEN quota.pending > 0 THEN 1 ELSE 0 END) as pending'),
+                DB::raw('SUM(CASE WHEN quota.expired > 0 THEN 1 ELSE 0 END) as expired'),
+                DB::raw('SUM(CASE WHEN quota.total > 0 THEN 1 ELSE 0 END) as total')
+            )
+            ->first();
+
+        $eoBalance = [];
+        if ($eo) {
+            $eoBalance[] = [
+                'id' => 'quota',
+                'label' => 'Quota',
+                'value' => $eo->quota,
+                'color' => 'hsl(130, 70%, 50%)'
+
+            ];
+            $eoBalance[] = [
+                'id' => 'used',
+                'label' => 'Used',
+                'value' => $eo->used,
+                'color' => 'hsl(221, 70%, 50%)'
+            ];
+            $eoBalance[] = [
+                'id' => 'pending',
+                'label' => 'Pending',
+                'value' => $eo->pending,
+                'color' => 'hsl(54, 70%, 50%)'
+            ];
+            $eoBalance[] = [
+                'id' => 'expired',
+                'label' => 'Expired',
+                'value' => $eo->expired,
+                'color' => 'hsl(15, 70%, 50%)'
+            ];
+        }
+        $al = DB::table(function($subquery) {
+                $subquery->select(
+                        DB::raw('SUM(CASE WHEN (al.expire > NOW() OR al.expire IS NULL) AND (lra.approval IS NULL OR lra.approval IN (0,3)) THEN 1 ELSE 0 END) AS quota'),
+                        DB::raw('SUM(CASE WHEN lra.approval = 2 THEN 1 ELSE 0 END) AS used'),
+                        DB::raw('SUM(CASE WHEN al.expire < NOW() AND (lra.approval NOT IN (1,2) OR lra.approval IS null) THEN 1 ELSE 0 END) AS expired'),
+                        DB::raw('SUM(CASE WHEN lra.approval = 1 THEN 1 ELSE 0 END) AS pending'),
+                        DB::raw('COUNT(DISTINCT al.id) AS total')
+                    )
+                    ->from('annual_leave as al')
+                    ->leftJoin(DB::raw('(SELECT 
+                                            id_al, 
+                                            approval
+                                        FROM 
+                                            leave_request_al
+                                        GROUP BY 
+                                            id_al, approval) AS lra'), 'al.id', '=', 'lra.id_al')
+                    ->where('al.id_staff', session('id_staff'))
+                    ->where(function ($query) {
+                        $query->whereRaw('al.expire > DATE_FORMAT(NOW(), "%Y-%m-01")')
+                            ->orWhereNull('al.expire');
+                    })
+                    ->groupBy('al.id');
+            }, 'quota')
+            ->select(
+                DB::raw('SUM(CASE WHEN quota.quota > 0 THEN 1 ELSE 0 END) as quota'),
+                DB::raw('SUM(CASE WHEN quota.used > 0 THEN 1 ELSE 0 END) as used'),
+                DB::raw('SUM(CASE WHEN quota.pending > 0 THEN 1 ELSE 0 END) as pending'),
+                DB::raw('SUM(CASE WHEN quota.expired > 0 THEN 1 ELSE 0 END) as expired'),
+                DB::raw('SUM(CASE WHEN quota.total > 0 THEN 1 ELSE 0 END) as total')
+            )
+            ->first();
+
+        $alBalance = [];
+        if ($al) {
+            $alBalance[] = [
+                'id' => 'quota',
+                'label' => 'Quota',
+                'value' => $al->quota,
+                'color' => 'hsl(130, 70%, 50%)'
+            ];
+            $alBalance[] = [
+                'id' => 'used',
+                'label' => 'Used',
+                'value' => $al->used,
+                'color' => 'hsl(221, 70%, 50%)'
+            ];
+            $alBalance[] = [
+                'id' => 'pending',
+                'label' => 'Pending',
+                'value' => $al->pending,
+                'color' => 'hsl(54, 70%, 50%)'
+            ];
+            $alBalance[] = [
+                'id' => 'expired',
+                'label' => 'Expired',
+                'value' => $al->expired,
+                'color' => 'hsl(15, 70%, 50%)'
+            ];
+        }
+
+        return response()->json([
+            'status' => true,
+            'message' => 'Leave Balance',
+            'dp' => $dpBalance,
+            'eo' => $eoBalance,
+            'al' => $alBalance
+        ], 200);
+    }
+
+    public function indexEobyDepartment (Request $request) {
+        $input = $request->validate([
+            'date' => 'required|date',
+            'filter' => 'string',
+            'sort' => 'string'
+        ]);
+
+        $data = DB::table('extra_off as eo')
+        ->select('si.Nama as name', 'eo.expire', 'lre.date as replace', 'lre.approval')
+        ->join('staff as si', 'si.id', '=', 'eo.id_staff')
+        ->leftJoin('leave_request_eo as lre', 'lre.id_eo', '=', 'eo.id')
+        ->where(DB::raw("DATE_FORMAT(eo.date, '%Y-%m')"), $input['date'])
+        ->where('si.id_unit', Auth::user()->id_unit)
+        ->orderBy($input['filter'], $input['sort'])
+        ->paginate(10);
+
+        if($data){
+            return response()->json([
+                'status' => true,
+                'message' => 'Data Extra Off',
+                'data' => $data
+            ], 200);
+        }
+
+        return response()->json([
+            'status' => false,
+            'message' => 'Data Extra Off not found',
+            'data' => null
+        ], 404);
+    }
+
+    public function indexNoEobyDepartment (Request $request) {
+        $input = $request->validate([
+            'date' => 'required|date'
+        ]);
+        
+        $data = DB::table('staff as si')
+            ->select('si.id', 'si.name', 'si.position')
+            ->where('si.id_unit', Auth::user()->id_unit)
+            ->whereNotExists(function ($query) use ($input) {
+                $query->select(DB::raw(1))
+                    ->from('extra_off as eo')
+                    ->whereRaw('eo.id_staff = si.id')
+                    ->where(DB::raw("DATE_FORMAT(eo.date, '%Y-%m')"), $input['date']);
+            })
+            ->where(function ($query) {
+                $query->where('si.status', 'Active')
+                    ->orWhereNull('si.status');
+            })
+            ->orderBy('si.name', 'ASC')
+            ->get();
+
+        if($data){
+            return response()->json([
+                'status' => true,
+                'message' => 'Data Staff without Extra Off',
+                'data' => $data
+            ], 200);
+        }
+
+        return response()->json([
+            'status' => false,
+            'message' => 'Data Staff without Extra Off not found',
+            'data' => null
+        ], 404);
+    }
+
     public function store(Request $request) {
         $request->validate([
             'inputDp' => 'array',
@@ -279,6 +638,7 @@ class LeavePermitController extends Controller
             'inputAl' => 'array',
             'inputAl.*.id' => 'required|string',
             'inputAl.*.date' => 'required|date',
+            'note' => 'string|required'
         ],[
             'inputDp.required' => 'Day Payment is required.',
             'inputDp.*.id.required' => 'Select a Day Payment option.',
@@ -292,6 +652,8 @@ class LeavePermitController extends Controller
             'inputAl.*.id.required' => 'Select an Annual Leave option.',
             'inputAl.*.date.required' => 'Annual Leave Date is required.',
             'inputAl.*.date.date' => 'Invalid Date format.',
+            'note.required' => 'Note is required.',
+            'note.string' => 'Note must be a string.'
             
         ]);
 
@@ -312,15 +674,16 @@ class LeavePermitController extends Controller
             'track' => 1,
             'outstanding_dp' => 0,
             'outstanding_eo' => 0,
-            'outstanding_al' => 0
+            'outstanding_al' => 0,
+            'note' => $input['note']
         ]);
 
         $leave_request = DB::table('leave_request')
             ->where('request_date', $now)
             ->first();
 
-        $employee = DB::table('hr_staff_info')
-            ->select('DEPT_NAME as id_department')
+        $employee = DB::table('staff')
+            ->select('id_unit as id_department', 'name', 'position')
             ->where('Fid', session('id_staff'))
             ->first();
 
@@ -416,11 +779,97 @@ class LeavePermitController extends Controller
             $status = DB::table('leave_request_al')->insert($alDate);
         }
 
+        $users = DB::table('users')
+        ->join('hr_staff_info', 'users.id_staff', '=', 'hr_staff_info.FID')
+        ->join('telegram_session', 'telegram_session.id_staff', '=', 'hr_staff_info.FID')
+        ->select('telegram_session.id')
+        ->where('users.id_unit', $employee->id_department)
+        ->where('telegram_session.status', 'Active')
+        ->where(function($query) {
+            $query->where('role', 2)
+                ->orWhere('role', 3)
+                ->orWhere('role', 4);
+        })
+        ->get();
+
+        if($users){
+            $message = "<pre>";
+            $message .= "<b>Leave permit request from :</b>";
+            $message .= "\nName        : " . $employee->name;
+            $message .= "\nPosition    : " . $employee->position;
+            
+            if($input['inputDp']){
+                $message .= "\n\nDay Payment : ";
+                foreach ($input['inputDp'] as $key => $value) {
+                    $message .= "\n  ".($key+1).". Date     : " . date('l, d F Y', strtotime($value['date']));
+                }
+            }
+            if($input['inputEo']){
+                $message .= "\n\nExtra Off : ";
+                foreach ($input['inputEo'] as $key => $value) {
+                    $message .= "\n  ".($key+1).". Date     : " . date('l, d F Y', strtotime($value['date']));
+                }
+            }
+            if($input['inputAl']){
+                $message .= "\n\nAnnual Leave : ";
+                foreach ($input['inputAl'] as $key => $value) {
+                    $message .= "\n  ".($key+1).". Date     : " . date('l, d F Y', strtotime($value['date']));
+                }
+            }
+
+            $message .= "\n\nNote     : " . $input['note'];
+            $message .= "</pre>";
+
+            foreach($users as $user){
+                Telegram::sendMessage([
+                    'chat_id' => $user->id,
+                    'text' => $message,
+                    'parse_mode' => 'HTML'
+                ]);
+            }
+        }
+
         return response()->json([
             'status' => true,
             'message' => 'Data Leave Permit berhasil ditambahkan',
             'data' => $status
         ], 200);
+    }
+
+    public function storeEo (Request $request){
+        $input = $request->validate([
+            'data' => 'required|array',
+            'date' => 'required|date',
+        ],[
+            'data.required' => 'Choose atleast one staff.',
+            'data.array' => 'Data must be an array.',
+            'date.required' => 'Date is required.',
+            'date.date' => 'Invalid Date format.'
+        
+        ]);
+        $expireDate = date('Y-m-t', strtotime($input['date']));
+        foreach($input['data'] as $data){
+            $status = DB::table('extra_off')
+                ->insert([
+                    'id_staff' => $data['id'],
+                    'date' => $input['date'].'-01',
+                    'expire' => $expireDate
+                ]);
+        }
+
+        if($status){
+            return response()->json([
+                'status' => true,
+                'message' => 'Data Extra Off berhasil ditambahkan',
+                'data' => $status
+            ], 200);
+        }
+
+        return response()->json([
+            'status' => false,
+            'message' => 'Data Extra Off gagal ditambahkan',
+            'data' => null
+        ], 422);
     }
 
     public function show($id) {
@@ -736,8 +1185,8 @@ class LeavePermitController extends Controller
             ->where('lr.id', $id)
             ->first();
 
-        $leave->request_date = date('l, d F Y', strtotime($leave->request_date));
-        $leave->created_at = date('d-m-Y', strtotime($leave->request_date));
+        // $leave->request_date = date('l, d F Y', strtotime($leave->request_date));
+        $leave->created_at = date('d-m-Y H:i', strtotime($leave->request_date));
         
         $dp = DB::table('leave_request as lr')
             ->join('leave_request_dp as lrd', 'lr.id', '=', 'lrd.id_leave_request')
@@ -799,10 +1248,10 @@ class LeavePermitController extends Controller
             $item->date_replace = date('l, d F Y', strtotime($item->date_replace));
         }
 
-        $staff = DB::table('hr_staff_info as si')
-            ->join('hr_unit as u', 'si.DEPT_NAME', '=', 'u.IdUnit')
-            ->select('si.Nama as name', 'si.Jabatan as position', 'u.Namaunit as unit')
-            ->where('si.FID', $ids)
+        $staff = DB::table('staff as si')
+            ->join('hr_unit as u', 'si.id_unit', '=', 'u.IdUnit')
+            ->select('si.name', 'si.position', 'u.Namaunit as unit')
+            ->where('si.id', $ids)
             ->first();
 
             $staff->position = mb_convert_case($staff->position, MB_CASE_TITLE, 'UTF-8');
@@ -810,14 +1259,14 @@ class LeavePermitController extends Controller
 
         $users = DB::table('leave_request_update as lru')
             ->join('users as u', 'lru.id_user', '=', 'u.id')
-            ->join('hr_staff_info as si', 'u.id_staff', '=', 'si.FID')
-            ->select('si.Nama as name', 'u.role', 'lru.created_at')
+            ->join('staff as si', 'u.id_staff', '=', 'si.id')
+            ->select('si.name', 'u.role', 'lru.created_at')
             ->where('lru.id_leave_request', $id)
             ->orderBy('lru.created_at', 'ASC')
             ->get();
         for($i = 0; $i < count($users); $i++){
             $users[$i]->name = mb_convert_case($users[$i]->name, MB_CASE_TITLE, 'UTF-8');
-            $users[$i]->created_at = date('d-m-Y', strtotime($users[$i]->created_at));
+            $users[$i]->created_at = date('d-m-Y H:i', strtotime($users[$i]->created_at));
         }
 
         $quota = [];
@@ -841,6 +1290,9 @@ class LeavePermitController extends Controller
         return Pdf::view('leave', ['data' =>$leave, 'dp' => $dp, 'eo' => $eo, 'al' => $al, 'staff' => $staff, 'id'=> $id, 'ids' => $ids, 'users' => $users, 'quota' => $quota])
             ->format('a4')
             ->margins(2, 2, 2, 2, Unit::Centimeter)
-            ->name('leave-'.now()->format('Y-m-d').'.pdf');
+            ->name('leave-'.now()->format('Y-m-d').'.pdf')
+            ->withBrowsershot(function (Browsershot $browsershot) {
+                $browsershot->scale(1);
+            });
     }
 }

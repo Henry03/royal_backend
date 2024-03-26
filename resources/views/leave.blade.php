@@ -82,8 +82,8 @@
                 </tbody>
             </table>
         </div>      
-        <div class="overflow-x-auto card w-fit border rounded-md border-slate-800">
-            <table class="table w-fit">
+        <div class="overflow-x-auto card w-full border rounded-md border-slate-800">
+            <table class="table w-full">
                 <thead>
                     <tr>
                         <th class="border-e border-b border-slate-800 text-slate-800 text-center">Type of Leave</th>
@@ -120,7 +120,11 @@
             </table>
         </div>      
         
-        
+        <div class="overflow-x-auto card w-full border rounded-md border-slate-800" style="padding:1rem">
+            <p class="text-sm font-semibold">Note : </p>
+            {{$data->note}}
+        </div>
+
         <table class="border-collapse border table-fixed w-full mt-5">
             <thead class="">
                 <tr class="text-sm">

@@ -9,10 +9,6 @@ use Illuminate\Support\Facades\Auth;
 class OffWorkController extends Controller
 {
     public function countByDepartment () {
-        $user = DB::table('users')
-            ->join('hr_staff_info', 'users.id_staff', '=', 'hr_staff_info.FID')
-            ->where('id_staff', '=', Auth::user()->id_staff)
-            ->first();
 
         $annualLeave = DB::table('hr_staff_info AS si')
             ->leftJoin('annual_leave AS al', 'si.FID', '=', 'al.id_staff')
@@ -24,7 +20,7 @@ class OffWorkController extends Controller
                 DB::raw('COUNT(al.id) - COUNT(CASE WHEN lra.approval = 2 THEN al.id END) AS remain'),
                 DB::raw('COUNT(al.id) AS total')
             )
-            ->where('si.DEPT_NAME', 'like', 'a000000006')
+            ->where('si.DEPT_NAME', 'like', Auth::user()->id_unit)
             ->where(function ($query) {
                 $query->where('al.expire', '>', now())
                     ->orWhereNull('al.expire');
@@ -43,7 +39,7 @@ class OffWorkController extends Controller
                 DB::raw('COUNT(md.id) - COUNT(CASE WHEN lrd.approval = 2 THEN md.id END) AS remain'),
                 DB::raw('COUNT(md.id) AS total')
             )
-            ->where('si.DEPT_NAME', 'like', $user->DEPT_NAME)
+            ->where('si.DEPT_NAME', 'like', Auth::user()->id_unit)
             ->where(function ($query) {
                 $query->where('md.expire', '>', now())
                     ->orWhereNull('md.expire');
@@ -62,7 +58,7 @@ class OffWorkController extends Controller
                 DB::raw('COUNT(eo.id) - COUNT(CASE WHEN lre.approval = 2 THEN eo.id END) AS remain'),
                 DB::raw('COUNT(eo.id) AS total')
             )
-            ->where('si.DEPT_NAME', 'like', $user->DEPT_NAME)
+            ->where('si.DEPT_NAME', 'like', Auth::user()->id_unit)
             ->where(function ($query) {
                 $query->where('eo.expire', '>', now())
                     ->orWhereNull('eo.expire');
@@ -121,8 +117,13 @@ class OffWorkController extends Controller
 
         $data = DB::table('manager_on_duty AS md')
         ->leftJoin('leave_request_dp AS lrd', 'md.id', '=', 'lrd.id_mod')
-        ->select('md.*', 'lrd.date AS replace_date')
+        ->select('md.*', 'lrd.date AS replace_date', 'lrd.approval')
         ->where('md.id_staff', '=', $id)
+        ->where(function ($query) {
+            $query->where('lrd.approval', '=', 2)
+                ->orwhere('lrd.approval', '=', 1)
+                ->orWhereNull('lrd.approval');
+        })
         ->orderByDesc('md.date')
         ->paginate(10);
         

@@ -16,6 +16,7 @@ class DepartmentController extends Controller
         ->whereNotNull('JABATAN')
         ->where('JABATAN', '!=', '')
         ->orderBy('Namaunit', 'asc')
+        ->orderBy('jabatan', 'asc')
         ->distinct()
         ->get();
 

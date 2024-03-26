@@ -14,15 +14,15 @@ class ManagerOnDutyController extends Controller
         $endDate = $request->endDate;
 
         $user = DB::table('users')
-            ->join('hr_staff_info', 'users.id_staff', '=', 'hr_staff_info.FID')
+            ->join('staff', 'users.id_staff', '=', 'staff.id')
             ->where('id_staff', '=', Auth::user()->id_staff)
             ->first();
         
             
         $data = DB::table('manager_on_duty as mod')
-            ->join('hr_staff_info as si', 'si.FID', '=', 'mod.id_staff')
-            ->select('si.Fid', 'si.Nama', 'si.JABATAN', 'mod.date', 'mod.type', 'mod.id')
-            ->where('si.DEPT_NAME', '=', $user->DEPT_NAME)
+            ->join('staff as si', 'si.id', '=', 'mod.id_staff')
+            ->select('si.id as FID', 'si.name', 'si.position', 'mod.date', 'mod.type', 'mod.id')
+            ->where('si.id_unit', '=', $user->DEPT_NAME)
             ->whereDate('mod.date', '>=', $startDate)
             ->whereDate('mod.date', '<=', $endDate)
             ->get();
@@ -30,10 +30,10 @@ class ManagerOnDutyController extends Controller
         $groupedData = [];
 
         foreach ($data as $item) {
-            $idStaff = $item->Fid; // Replace 'ID' with the actual property of your data
+            $idStaff = $item->FID; // Replace 'ID' with the actual property of your data
             $idMod = $item->id; // Replace 'ID' with the actual property of your data
-            $name = $item->Nama; // Replace 'Nama' with the actual property of your data
-            $position = $item->JABATAN; // Replace 'JABATAN' with the actual property of your data
+            $name = $item->name; // Replace 'Nama' with the actual property of your data
+            $position = $item->position; // Replace 'JABATAN' with the actual property of your data
             $date = $item->date; // Replace 'date' with the actual property of your data
             $type = $item->type; // Replace 'type' with the actual property of your data
         
@@ -94,7 +94,7 @@ class ManagerOnDutyController extends Controller
         $sort = $request->input('Fid', 'desc');
 
         $user = DB::table('users')
-            ->join('hr_staff_info', 'users.id_staff', '=', 'hr_staff_info.FID')
+            ->join('staff', 'users.id_staff', '=', 'staff.id')
             ->where('id_staff', '=', Auth::user()->id_staff)
             ->first();
         
@@ -103,9 +103,9 @@ class ManagerOnDutyController extends Controller
         }
         
         $data = DB::table('manager_on_duty as mod')
-        ->join('hr_staff_info as si', 'si.FID', '=', 'mod.id_staff')
-        ->select('si.Fid', 'si.Nama', 'si.JABATAN', 'mod.date', 'mod.type', 'mod.id')
-        ->where('si.DEPT_NAME', '=', $user->DEPT_NAME)
+        ->join('staff as si', 'si.id', '=', 'mod.id_staff')
+        ->select('si.id as Fid', 'si.Nama', 'si.JABATAN', 'mod.date', 'mod.type', 'mod.id')
+        ->where('si.id_unit', '=', $user->DEPT_NAME)
         ->whereDate('mod.date', '>=', $startDate)
         ->whereDate('mod.date', '<=', $endDate)
         ->orderByRaw("$filter $sort")
@@ -148,8 +148,8 @@ class ManagerOnDutyController extends Controller
     public function show (Request $request, $id) {
 
         $result = DB::table('manager_on_duty as mod')
-            ->join('hr_staff_info as si', 'si.FID', '=', 'mod.id_staff')
-            ->select('si.Fid', 'si.Nama', 'si.JABATAN', 'mod.date', 'mod.type', 'mod.id')
+            ->join('staff as si', 'si.id', '=', 'mod.id_staff')
+            ->select('si.id', 'si.name as Nama', 'si.position as JABATAN', 'mod.date', 'mod.type', 'mod.id')
             ->where('mod.id', '=', $id)
             ->first();
 
@@ -172,20 +172,20 @@ class ManagerOnDutyController extends Controller
         }
 
         $user = DB::table('users')
-            ->join('hr_staff_info', 'users.id_staff', '=', 'hr_staff_info.FID')
+            ->join('staff', 'users.id_staff', '=', 'staff.id')
             ->where('id_staff', '=', Auth::user()->id_staff)
             ->first();
         
             
-        $mod = DB::table('hr_staff_info as si')
-        ->leftJoin('manager_on_duty as md', 'si.FID', '=', 'md.id_staff')
-        ->select('si.Fid as id_staff', 'si.Nama as name', 'si.JABATAN as position', 'md.date', 'md.type', 'md.id')
-        ->where('si.DEPT_NAME', '=', $user->DEPT_NAME)
+        $mod = DB::table('staff as si')
+        ->leftJoin('manager_on_duty as md', 'si.id', '=', 'md.id_staff')
+        ->select('si.id as id_staff', 'si.name', 'si.position', 'md.date', 'md.type', 'md.id')
+        ->where('si.id_unit', '=', $user->id_unit)
         ->where(function ($query) use ($date) {
             $query->where(DB::raw("DATE_FORMAT(md.date, '%Y-%m')"), '=', $date)
             ->orWhereNull('md.date');
         })
-        ->orderBy('si.Nama', 'asc')
+        ->orderBy('si.name', 'asc')
         ->get();
 
         $scheduleList = DB::table('ta_timetable as tt')
@@ -194,9 +194,9 @@ class ManagerOnDutyController extends Controller
 
         $schedule = DB::table('ta_jadwal_staffx as js')
             ->join('ta_timetable as tt', 'js.NoJadwal', '=', 'tt.ID')
-            ->join('hr_staff_info as si', 'si.FID', '=', 'js.Fid')
+            ->join('staff as si', 'si.id', '=', 'js.Fid')
             ->select('js.Fid as id_staff', 'js.Tanggal as date', 'tt.ID as id', 'tt.Nama_Jadwal as schedule_name')
-            ->where('si.DEPT_NAME', '=', $user->DEPT_NAME)
+            ->where('si.id_unit', '=', $user->id_unit)
             ->where(function ($query) use ($date) {
                 $query->where(DB::raw("DATE_FORMAT(str_to_date(js.Tanggal, '%d/%m/%Y'), '%Y-%m')"), '=', $date);
             })
@@ -204,9 +204,9 @@ class ManagerOnDutyController extends Controller
 
         $dp = DB::table('leave_request_dp as dp')
             ->join('manager_on_duty as md', 'md.id', '=', 'dp.id_mod')
-            ->join('hr_staff_info as si', 'si.FID', '=', 'md.id_staff')
+            ->join('staff as si', 'si.id', '=', 'md.id_staff')
             ->select('md.id_staff', 'dp.date', 'md.id')
-            ->where('si.DEPT_NAME', '=', $user->DEPT_NAME)
+            ->where('si.id_unit', '=', $user->id_unit)
             ->where(function ($query) use ($date) {
                 $query->where(DB::raw("DATE_FORMAT(dp.date, '%Y-%m')"), '=', $date);
             })
@@ -215,9 +215,9 @@ class ManagerOnDutyController extends Controller
 
         $eo = DB::table('leave_request_eo as lre')
             ->join('extra_off as eo', 'eo.id', '=', 'lre.id_eo')
-            ->join('hr_staff_info as si', 'si.FID', '=', 'eo.id_staff')
+            ->join('staff as si', 'si.id', '=', 'eo.id_staff')
             ->select('eo.id_staff', 'lre.date', 'eo.id')
-            ->where('si.DEPT_NAME', '=', $user->DEPT_NAME)
+            ->where('si.id_unit', '=', $user->id_unit)
             ->where(function ($query) use ($date) {
                 $query->where(DB::raw("DATE_FORMAT(eo.date, '%Y-%m')"), '=', $date);
             })
@@ -226,9 +226,9 @@ class ManagerOnDutyController extends Controller
 
         $al = DB::table('leave_request_al as lra')
             ->join('annual_leave as al', 'al.id', '=', 'lra.id_al')
-            ->join('hr_staff_info as si', 'si.FID', '=', 'al.id_staff')
+            ->join('staff as si', 'si.id', '=', 'al.id_staff')
             ->select('al.id_staff', 'lra.date', 'lra.id')
-            ->where('si.DEPT_NAME', '=', $user->DEPT_NAME)
+            ->where('si.id_unit', '=', $user->id_unit)
             ->where(function ($query) use ($date) {
                 $query->where(DB::raw("DATE_FORMAT(lra.date, '%Y-%m')"), '=', $date);
             })
@@ -285,12 +285,29 @@ class ManagerOnDutyController extends Controller
 
         foreach ($schedule as $entry) {
             $id = $entry->id_staff;
+            $date = Carbon::createFromFormat('d/m/Y', $entry->date)->format('Y-m-d');
 
-            $mergedData[$id]['data'][] = [
-                'id' => $entry->id,
-                'date' => Carbon::createFromFormat('d/m/Y', $entry->date)->format('Y-m-d'),
-                'type' => $entry->id,
-            ];
+            // Check if the date already exists in mergedData
+            $existingData = $mergedData[$id]['data'];
+            $existingDateKeys = array_column($existingData, 'date');
+            $key = array_search($date, $existingDateKeys);
+
+            if ($key !== false) {
+                // If the date exists, merge the data
+                $mergedData[$id]['data'][$key] = array_merge(
+                    $mergedData[$id]['data'][$key],
+                    [
+                        'shift' => $entry->schedule_name,
+                    ]
+                );
+            } else {
+                // If the date does not exist, add the data
+                $mergedData[$id]['data'][] = [
+                    'id' => $entry->id,
+                    'date' => $date,
+                    'type' => $entry->id,
+                ];
+            }
         }
 
         foreach ($dp as $entry) {
@@ -378,6 +395,9 @@ class ManagerOnDutyController extends Controller
         }
 
         if($input['type'] == 'MOD' || $input['type'] == 'Incharge') {
+            $result = DB::table('ta_jadwal_staffx')
+                ->updateOrInsert(['Fid' => $request->id_staff, 'Tanggal' => Carbon::parse($request->date)->format('d/m/Y')], ['NoJadwal' => $request->modShift]);
+            $input['expire'] = date('Y-m-d H:i:s', strtotime($input['date'] . ' + 30 day'));
             $result = DB::table('manager_on_duty')
                 ->updateOrInsert(['id' => $request->id], $input);
         } else {
