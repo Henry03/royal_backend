@@ -81,18 +81,26 @@
             <tbody>
                 <tr class="h-28">
                     <td class="border border-b-0"></td>
-                    <td class="border border-b-0"></td>
-                    <td class="border border-b-0"></td>
+                    @foreach($users as $user)
+                        <td class="border border-b-0"></td>
+                    @endforeach
                 </tr>
                 <tr>
                     <td class=""><hr class="mx-5"/></td>
-                    <td class=""><hr class="mx-5"/></td>
-                    <td class=""><hr class="mx-5"/></td>
+                    @foreach($users as $user)
+                        <td class=""><hr class="mx-5"/></td>
+                    @endforeach
                 </tr>
                 <tr>
                     <td class="border border-t-0 text-center text-sm">{{ $data->name }}</td>
                     @foreach($users as $user)
                         <td class="border border-t-0 text-center text-sm">{{ $user->name}}</td>
+                    @endforeach
+                </tr>
+                <tr>
+                    <td class="border border-t-0 text-xs px-5">Date : {{ $data->created_at }}</td>
+                    @foreach($users as $user)
+                        <td class="border border-t-0 text-xs px-5">Date : {{ $user->created_at}}</td>
                     @endforeach
                 </tr>
             </tbody>

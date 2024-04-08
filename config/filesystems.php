@@ -56,6 +56,13 @@ return [
             'throw' => false,
         ],
 
+        'disk' => [
+            'driver' => 'local',
+            'root' => storage_path('app/uploads'),
+            'url' => env('APP_URL') . '/storage',
+            'visibility' => 'private',
+        ],
+
     ],
 
     /*

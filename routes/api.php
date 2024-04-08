@@ -8,6 +8,7 @@ use App\Http\Controllers\EventController;
 use App\Http\Controllers\OutOfDutyPermitController;
 use App\Http\Controllers\UserController;
 use App\Http\Controllers\AttendanceController;
+use App\Http\Controllers\FormController;
 use App\Http\Controllers\LeavePermitController;
 use App\Http\Controllers\LeaveUserController;
 use App\Http\Controllers\ManagerOnDutyController;
@@ -138,6 +139,9 @@ Route::controller(OutOfDutyPermitController::class)->group( function() {
         Route::get('/user/outofduty/detail/{id}', 'show');
         Route::get('/user/outofduty/department', 'departmentIndex');
     });
+    Route::middleware(['auth:sanctum', 'ability:5'])->group(function () {
+        Route::get('/user/outofduty/gm', 'indexByGm');
+    });
     Route::get('/outofduty/download', [OutOfDutyPermitController::class, 'download']);
 });
 
@@ -190,11 +194,14 @@ Route::controller(ShiftController::class)->group( function() {
 
 
 Route::controller(OffWorkController::class)->group( function() {
-    Route::middleware(['auth:sanctum', 'ability:1'])->group(function () {
+    Route::middleware(['auth:sanctum', 'ability:1,2,3,4'])->group(function () {
         Route::get('/offwork/department', 'countByDepartment');
     });
+    Route::middleware(['auth:sanctum', 'ability:6'])->group(function () {
+        Route::post('/offwork/hrd', 'countByHRD');
+    });
 
-    Route::middleware(['auth:sanctum', 'ability:1'])->group(function () {
+    Route::middleware(['auth:sanctum', 'ability:1,2,3,4,6'])->group(function () {
         Route::post('/offwork/dp', 'indexDp');
         Route::post('/offwork/eo', 'indexEo');
         Route::post('/offwork/al', 'indexAl');
@@ -223,6 +230,9 @@ Route::controller(LeavePermitController::class)->group(function() {
         Route::put('/user/leavepermit/reject/al/{id}', 'rejectAl');
         Route::post('/user/leavepermit/department/approved', 'indexbyDepartmentApproved');
     });
+    Route::middleware(['auth:sanctum', 'ability:5'])->group(function () {
+        Route::post('/user/leavepermit/gm/approved', 'indexbyGmApproved');
+    });
 
     Route::middleware(['auth:sanctum', 'ability:1'])->group(function () {
         Route::post('/user/eo/department', 'indexEobyDepartment');
@@ -232,18 +242,31 @@ Route::controller(LeavePermitController::class)->group(function() {
 
     Route::middleware(['auth:sanctum', 'ability:6'])->group(function () {
         Route::get('/user/leavepermit/calendar/all', 'indexAllCalendar');
+        Route::get('/user/annual/expire', 'annualExpire');
+        Route::post('/user/annual/expire', 'updateAnnualExpire');
+        Route::post('/user/eo/department/all', 'indexStaffWithEobyDepartment');
+        Route::post('/user/noeo/all', 'indexNoEo');
+        Route::post('/user/eoentitlement/store', 'storeEoEntitlement');
+        Route::post('/user/eoentitlement/delete', 'deleteEoEntitlement');
     });
 
     Route::middleware(['auth:sanctum', 'ability:5'])->group(function () {
         Route::post('/gm/leavepermit', 'indexByGm');
+    });
+    Route::middleware(['auth:sanctum', 'ability:2,3,4'])->group(function () {
+        Route::put('/user/leavepermit/cancel/{id}', 'cancelByHOD');
     });
 
     Route::get('/leave/download', 'download');
 });
 
 Route::controller(unitController::class)->group( function() {
-    Route::middleware(['auth:sanctum', 'ability:6'])->group(function () {
+    Route::middleware(['auth:sanctum', 'ability:1,2,3,4,5,6'])->group(function () {
         Route::get('/unit/index', 'index');
+    });
+    
+    Route::middleware('employee.token.check')->group(function () {
+        Route::get('/staff/unit/index', 'index');
     });
 });
 
@@ -253,10 +276,49 @@ Route::controller(StorageController::class)->group( function() {
 });
 
 Route::controller(TelegramBotController::class)->group( function() {
-    Route::get('/telegram/staff', 'indexStaff');
-    Route::get('/telegram/getme', 'getMe');
-    Route::get('/telegram/setwebhook', 'setWebhook');
-    Route::post('/telegram/webhook', 'commandHandlerWebhook');
-    Route::get('/telegram/webhook/delete', 'deleteWebhook');
-    Route::get('/telegram/webhook/info', 'getWebhookInfo');
+    // Route::middleware(['auth:sanctum', 'ability:6'])->group(function () {
+        Route::get('/telegram/staff', 'indexStaff');
+        Route::get('/telegram/getme', 'getMe');
+        Route::get('/telegram/setwebhook', 'setWebhook');
+        Route::post('/telegram/webhook', 'commandHandlerWebhook');
+        Route::get('/telegram/webhook/delete', 'deleteWebhook');
+        Route::get('/telegram/webhook/info', 'getWebhookInfo');
+        Route::post('/telegram/session', 'show');
+        Route::post('/telegram/session/activate', 'activate');
+        Route::post('/telegram/session/revoke', 'revoke');
+        Route::post('/telegram/session/ban', 'ban');
+    // });
+});
+
+Route::controller(FormController::class)->group( function() {
+    Route::middleware(['auth:sanctum', 'ability:6'])->group(function () {
+        Route::post('/user/form/store', 'store');
+        Route::post('/user/form/delete', 'destroy');
+        Route::get('/user/form', 'index');
+        Route::post('/user/form/response', 'responseIndex');
+        Route::post('/user/form/response/delete', 'staffDataDestroy');
+        Route::post('/user/form/response/accept', 'staffDataAccept');
+        Route::post('/user/form/individual', 'individualResponse');
+        Route::post('/user/form/individual/id', 'individualResponseById');
+        Route::post('/form/image', 'getImage');
+        Route::get('/form/export/excel/{id}', 'exportToExcel');
+    });
+    Route::middleware(['auth:sanctum', 'ability:1,2,3,4,5,6'])->group(function () {
+        Route::get('/user/form/detail/{id}', 'userShow');
+        Route::get('/user/form/staff/filled', 'isUserStaffFilled');
+        Route::post('/user/form/staff/store', 'userStaffDataStore');
+        Route::post('/user/form/family/store', 'userStaffFamilyStore');
+        Route::post('/user/form/emergency/store', 'userStaffEmergencyStore');
+        Route::post('/user/form/document/store', 'userStaffDocumentStore');
+    });
+    Route::middleware('employee.token.check')->group(function () {
+        Route::get('/form/staff/filled', 'isStaffFilled');
+        Route::get('/form/detail/{id}', 'show');
+        Route::post('/form/staff/store', 'staffDataStore');
+        Route::post('/form/family/store', 'userStaffFamilyStore');
+        Route::post('/form/emergency/store', 'userStaffEmergencyStore');
+        Route::post('/form/document/store', 'userStaffDocumentStore');
+    });
+
+    
 });

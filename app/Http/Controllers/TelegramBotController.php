@@ -35,6 +35,72 @@ class TelegramBotController extends Controller
             'data' => $result
         ], 200);
     }
+
+    public function show(Request $request) {
+        $id = $request->input('id');
+        $staff = DB::table('staff AS si')
+            ->join('hr_unit AS u', 'si.id_unit', '=', 'u.IdUnit')
+            ->select('si.id AS id', 'si.name', 'u.Namaunit', 'si.position')
+            ->where('si.id', $id)
+            ->first();
+        $data = DB::table('telegram_session as ts')
+            ->where('ts.id_staff', $id)
+            ->get();
+
+        return response()->json([
+            'status' => true,
+            'message' => 'Data Staff',
+            'staff' => $staff,
+            'data' => $data
+        ], 200);
+    }
+
+    public function activate(Request $request) {
+        $id = $request->input('id');
+        $data = DB::table('telegram_session')
+            ->where('id', $id)
+            ->update(['status' => 'Active']);
+
+        return response()->json([
+            'status' => true,
+            'message' => 'Data Staff',
+            'data' => $data,
+            'id' => $id
+        ], 200);
+    }
+
+    public function revoke(Request $request) {
+        $input = $request->validate([
+            'id' => 'required'
+        ]);
+        $id = $request->input('id');
+        $data = DB::table('telegram_session')
+            ->where('id', $id)
+            ->update(['status' => 'Inactive']);
+
+        return response()->json([
+            'status' => true,
+            'message' => 'Data Staff',
+            'data' => $data
+        ], 200);
+    }
+
+    public function ban (Request $request) {
+        $input = $request->validate([
+            'id' => 'required'
+        ]);
+        $id = $request->input('id');
+        $data = DB::table('telegram_session')
+            ->where('id', $id)
+            ->update(['status' => 'Banned']);
+
+        return response()->json([
+            'status' => true,
+            'message' => 'Data Staff',
+            'data' => $data
+        ], 200);
+    }
+    
     public function setWebhook () {
         $response = Telegram::setWebhook(['url' => env('NGROK').env('TELEGRAM_WEBHOOK_URL')]);
 
@@ -53,7 +119,17 @@ class TelegramBotController extends Controller
         $data = DB::table('telegram_session')
             ->where('id', $chat_id)
             ->first();
-
+        
+        if($data && $data->status == "Banned"){
+            $message = "Maaf, akun anda telah di banned";
+            $message .= "\nSilahkan hubungi HRD untuk informasi lebih lanjut.";
+            Telegram::sendMessage([
+                'chat_id' => $chat_id,
+                'text' => $message,
+            ]);
+            return;
+        }
+        
         if (($update->getMessage()->getContact() !== null || preg_match('/^(?:\+?62|0)8[1-9][0-9]{6,9}$/', $update->getMessage()->getText()))) {
             $data = DB::table('telegram_session')
                 ->where('id', $chat_id)
@@ -82,6 +158,8 @@ class TelegramBotController extends Controller
                         ->updateOrInsert([
                             'id' => $chat_id,
                         ], [
+                            'first_name' => $update->getMessage()->getChat()->getFirstName(),
+                            'username' => $update->getMessage()->getChat()->getUsername(),
                             'phone_number' => $phone_number,
                             'status' => 'Pending',
                             'id_staff' => $staff_info->FID,
@@ -141,6 +219,8 @@ class TelegramBotController extends Controller
                         ->updateOrInsert([
                             'id' => $chat_id,
                         ], [
+                            'first_name' => $update->getMessage()->getChat()->getFirstName(),
+                            'username' => $update->getMessage()->getChat()->getUsername(),
                             'phone_number' => $phone_number,
                             'status' => 'Pending',
                             'id_staff' => $staff_info->FID,

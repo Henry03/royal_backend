@@ -16,33 +16,26 @@ class OutOfDutyPermitController extends Controller
         $search = $request->input('search');
 
         $data = DB::table('out_of_duty AS od')
-        ->select('od.*', 'si.name AS Nama', 'u.NamaUnit AS Unit')
+        ->select('od.*', 'si.name AS Nama', 'u.NamaUnit AS Unit', 'us.role')
         ->join('staff AS si', 'od.id_staff', '=', 'si.id')
         ->join('hr_unit AS u', 'si.id_unit', '=', 'u.IdUnit')
-        ->where(function ($query) use ($search) {
-            $query
-                ->where(function ($query) use ($search) {
-                    $query->where('track', 2)
+        ->leftJoin(DB::raw('(SELECT us.id_staff, us.role FROM users AS us WHERE us.role = 5) as us'), function ($join) {
+            $join->on('si.id', '=', 'us.id_staff');
+        })
+        ->where(function ($query) {
+            $query->where(function ($query) {
+                $query->where('track', 1)
+                    ->whereNotNull('us.role');
+            })
+                ->orWhere(function ($query) {
+                    $query->whereIn('track', [2, 3, 4, 5, 6])
                         ->where('od.status', 1);
-                })
-                ->orWhere(function ($query) use ($search) {
-                    $query->where('track', 3)
-                        ->where('od.status', 1);
-                })
-                ->orWhere(function ($query) use ($search) {
-                    $query->where('track', 4)
-                        ->where('od.status', 1);
-                })
-                ->orWhere(function ($query) use ($search) {
-                    $query->where('track', 5)
-                        ->where('od.status', 1);
-                })
-                ->orWhere('track', 6);
+                });
         })
         ->where(function ($query) use ($search) {
             $query->where('destination', 'LIKE', '%'.$search.'%')
                 ->orWhere('start_date', 'LIKE', '%'.$search.'%')
-                ->orWhere('created_at', 'LIKE', '%'.$search.'%');
+                ->orWhere('od.created_at', 'LIKE', '%'.$search.'%');
         })
         ->orderBy($filter, $sort)
         ->paginate(10);
@@ -109,16 +102,40 @@ class OutOfDutyPermitController extends Controller
     }
 
     public function departmentIndex(Request $request) {
-        $department = DB::table('hr_staff_info AS si')
-        ->where('si.FID', '=', Auth::user()->id_staff)
-        ->first();
 
         $data = DB::table('out_of_duty AS od')
-        ->select('od.*', 'si.Nama AS Nama')
-        ->join('hr_staff_info AS si', 'od.id_staff', '=', 'si.FID')
-        ->where('si.DEPT_NAME', '=', $department->DEPT_NAME)
+        ->select('od.*', 'si.name AS Nama')
+        ->join('staff AS si', 'od.id_staff', '=', 'si.id')
+        ->where('si.id_unit', '=', Auth::user()->id_unit)
         ->where('track', 6)
-        ->where('status', 1)
+        ->where('od.status', 1)
+        ->get();
+
+        if($data->isEmpty()){
+            return response()->json([
+                'status' => false,
+                'message' => 'Data not found',
+                'data' => null
+            ], 200);
+        }
+
+        return response()->json([
+            'status' => true,
+            'message' => 'Data Out of Duty',
+            'data' => $data
+        ], 200);
+    }
+    
+    public function indexByGm(Request $request) {
+
+        $data = DB::table('out_of_duty AS od')
+        ->join('staff AS si', 'od.id_staff', '=', 'si.id')
+        ->join(DB::raw('(SELECT id_staff, id, role, deleted_at FROM users WHERE role = 4 AND deleted_at IS NULL) AS u'), function ($join) {
+            $join->on('u.id_staff', '=', 'si.id');
+        })
+        ->select('od.*', 'si.name as Nama')
+        ->where('od.status', 1)
+        ->where('od.track', 6)
         ->get();
 
         if($data->isEmpty()){
@@ -285,7 +302,7 @@ class OutOfDutyPermitController extends Controller
             'destination' => 'required',
             'purpose' => 'required',
         ]);
-
+        
         $id = session('id_staff');
 
         $staff = DB::table('hr_staff_info')
@@ -310,11 +327,12 @@ class OutOfDutyPermitController extends Controller
                 ->orWhere('role', 3)
                 ->orWhere('role', 4);
         })
+        ->where('users.deleted_at', null)
         ->get();
 
         if($users){
             $message = "<pre>";
-            $message .= "<b>Out of Duty request from :</b>";
+            $message .= "Out of Duty request from :";
             $message .= "\nName        : " . $staff->Nama;
             $message .= "\nDestination : " . $input['destination'];
             $message .= "\nStart Date  : " . date('l, d F Y, H:i', strtotime($input['start_date']));
@@ -333,22 +351,58 @@ class OutOfDutyPermitController extends Controller
 
         $outOfDuty = DB::table('out_of_duty')->insert($input);
 
+        $message = "Dear bapak/ibu, saya ingin mengajukan izin keluar kantor dengan detail sebagai berikut :";
+        $message .= "%0aName        : " . $staff->Nama;
+        $message .= "%0aDestination : " . $input['destination'];
+        $message .= "%0aStart Date  : " . date('l, d F Y, H:i', strtotime($input['start_date']));
+        $message .= "%0aEnd Date    : " . date('l, d F Y, H:i', strtotime($input['end_date']));
+        $message .= "%0aPurpose     : " . $input['purpose'];
+        $message .= "%0aMohon dibantu untuk approval dari sistem. Terima kasih";
+
         return response()->json([
-            'status' => true,
-            'message' => 'Out of Duty request has been sent',
-            'data' => $input
+            'status' => 'Out of Duty request has been sent',
+            'data' => $input,
+            'phone_number' => $staff->Notelp,
+            'message' => $message
         ], 200);
     }
 
     public function show ($id) {
         $data = DB::table('out_of_duty')
-        ->where('id', $id)
+        ->leftJoin(DB::raw('(SELECT users.id_staff, users.deleted_at, users.role FROM users WHERE users.deleted_at IS NULL) AS us'), function ($join) {
+            $join->on('out_of_duty.id_staff', '=', 'us.id_staff');
+        })
+        ->select('out_of_duty.*','us.*')
+        ->where('out_of_duty.id', $id)
         ->first();
+
+        $step = DB::table('out_of_duty as od')
+            ->select(DB::raw("
+                CASE
+                    WHEN odu.track = 1 AND odu.status = 1 THEN 'Approved by Admin'
+                    WHEN odu.track = 2 AND odu.status = 1 THEN 'Approved by Chief'
+                    WHEN odu.track = 3 AND odu.status = 1 THEN 'Approved Asst. HOD'
+                    WHEN odu.track = 4 AND odu.status = 1 THEN 'Approved by HOD'
+                    WHEN odu.track = 5 AND odu.status = 1 THEN 'Approved by GM'
+                    WHEN odu.track = 6 AND odu.status = 1 THEN 'Acknowledge by HRD'
+                    WHEN odu.track = 1 AND odu.status = 0 THEN 'Rejected by Admin'
+                    WHEN odu.track = 2 AND odu.status = 0 THEN 'Rejected by Chief'
+                    WHEN odu.track = 3 AND odu.status = 0 THEN 'Rejected Asst. HOD'
+                    WHEN odu.track = 4 AND odu.status = 0 THEN 'Rejected by HOD'
+                    WHEN odu.track = 5 AND odu.status = 0 THEN 'Rejected by GM'
+                    WHEN odu.track = 6 AND odu.status = 0 THEN 'Rejected by HRD'
+                END as approval_status"), 'u.role', 'odu.track', 'odu.status', 'si.name', 'odu.created_at')
+            ->join('out_of_duty_update as odu', 'od.id', '=', 'odu.id_out_of_duty')
+            ->join('users as u', 'u.id', '=', 'odu.id_user')
+            ->join('staff AS si', 'si.id', '=', 'u.id_staff')
+            ->where('od.id', $id)
+            ->get();
 
         return response()->json([
             'status' => true,
             'message' => 'Data Out of Duty',
-            'data' => $data
+            'data' => $data,
+            'step' => $step
         ], 200);
     }
 
@@ -391,6 +445,7 @@ class OutOfDutyPermitController extends Controller
                 'id_out_of_duty' => $id,
                 'id_user' => Auth::user()->id,
                 'track' => $track,
+                'status' => 1,
                 'created_at' => now(),
                 'updated_at' => now()
             ]);
@@ -426,10 +481,6 @@ class OutOfDutyPermitController extends Controller
         ->where('id', $id)
         ->update(['status' => 0, 'track' => $track]);
 
-        $data = DB::table('out_of_duty')
-        ->where('id', $id)
-        ->update(['track' => $track]);
-
         if($data){
             return response()->json([
                 'status' => true,
@@ -454,7 +505,7 @@ class OutOfDutyPermitController extends Controller
         ->select('si.Nama AS name', 'od.*')
         ->where('id', $id)
         ->where('status', 1)
-        ->where('track', 6)
+        ->where('track', '>=', 1)
         ->where('od.id_staff', $ids)
         ->first();
 
@@ -472,6 +523,7 @@ class OutOfDutyPermitController extends Controller
         for($i = 0; $i < count($user); $i++){
             $user[$i]->name = mb_convert_case($user[$i]->name, MB_CASE_TITLE, 'UTF-8');
         }
+
         return Pdf::view('outofduty', ['data' => $data, 'users' => $user])
             ->format('a4')
             ->name('out_of_duty-'.now()->format('Y-m-d').'.pdf');

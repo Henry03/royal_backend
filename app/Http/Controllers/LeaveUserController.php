@@ -114,10 +114,35 @@ class LeaveUserController extends Controller
 
     public function show($id) {
         
-        $leave = DB::table('leave_request as lr')
-            ->select('lr.*')
-            ->where('lr.id', $id)
+        $data = DB::table('leave_request')
+            ->leftJoin(DB::raw('(SELECT users.id_staff, users.deleted_at FROM users WHERE users.deleted_at IS NULL) AS us'), function ($join) {
+                $join->on('leave_request.id_staff', '=', 'us.id_staff');
+            })
+            ->select('leave_request.*', 'us.*')
+            ->where('leave_request.id', $id)
             ->first();
+
+        $step = DB::table('leave_request as lr')
+            ->select(DB::raw("
+                CASE
+                    WHEN lru.track = 1 AND lru.status = 1 THEN 'Approved by Admin'
+                    WHEN lru.track = 2 AND lru.status = 1 THEN 'Approved by Chief'
+                    WHEN lru.track = 3 AND lru.status = 1 THEN 'Approved Asst. HOD'
+                    WHEN lru.track = 4 AND lru.status = 1 THEN 'Approved by HOD'
+                    WHEN lru.track = 5 AND lru.status = 1 THEN 'Approved by GM'
+                    WHEN lru.track = 6 AND lru.status = 1 THEN 'Acknowledge by HRD'
+                    WHEN lru.track = 1 AND lru.status = 0 THEN 'Rejected by Admin'
+                    WHEN lru.track = 2 AND lru.status = 0 THEN 'Rejected by Chief'
+                    WHEN lru.track = 3 AND lru.status = 0 THEN 'Rejected Asst. HOD'
+                    WHEN lru.track = 4 AND lru.status = 0 THEN 'Rejected by HOD'
+                    WHEN lru.track = 5 AND lru.status = 0 THEN 'Rejected by GM'
+                    WHEN lru.track = 6 AND lru.status = 0 THEN 'Rejected by HRD'
+                END as approval_status"), 'u.role', 'lru.track', 'lru.status', 'si.name', 'lru.created_at', 'lru.note')
+            ->join('leave_request_update as lru', 'lr.id', '=', 'lru.id_leave_request')
+            ->join('users as u', 'u.id', '=', 'lru.id_user')
+            ->join('staff AS si', 'si.id', '=', 'u.id_staff')
+            ->where('lr.id', $id)
+            ->get();
 
         $dp = DB::table('leave_request as lr')
             ->join('leave_request_dp as lrd', 'lr.id', '=', 'lrd.id_leave_request')
@@ -147,7 +172,8 @@ class LeaveUserController extends Controller
                 'dp' => $dp,
                 'eo' => $eo,
                 'al' => $al,
-                'data' => $leave
+                'data' => $data,
+                'step' => $step
             ], 200);
         } else {
             return response()->json([
@@ -195,24 +221,20 @@ class LeaveUserController extends Controller
     public function store(Request $request) {
         $request->validate([
             'inputDp' => 'array',
-            'inputDp.*.id' => 'required',
             'inputDp.*.date' => 'required|date',
             'inputEo' => 'array',
+            'inputDp.*.date' => 'required|date',
             'inputAl' => 'array',
-            'inputAl.*.id' => 'required|string',
             'inputAl.*.date' => 'required|date',
-            'note' => 'string|required'
+            'note' => 'required|string'
         ],[
             'inputDp.required' => 'Day Payment is required.',
-            'inputDp.*.id.required' => 'Select a Day Payment option.',
             'inputDp.*.date.required' => 'Day Payment Date is required.',
             'inputDp.*.date.date' => 'Invalid Date format.',
             'inputEo.required' => 'Extra Off is required.',
-            'inputEo.*.id.required' => 'Select an Extra Off option.',
             'inputEo.*.date.required' => 'Extra Off Date is required.',
             'inputEo.*.date.date' => 'Invalid Date format.',
             'inputAl.required' => 'Annual Leave is required.',
-            'inputAl.*.id.required' => 'Select an Annual Leave option.',
             'inputAl.*.date.required' => 'Annual Leave Date is required.',
             'inputAl.*.date.date' => 'Invalid Date format.',
             'note.required' => 'Note is required.',
@@ -232,6 +254,7 @@ class LeaveUserController extends Controller
         }
 
         DB::table('leave_request')->insert([
+            'id_staff' => Auth::user()->id_staff,
             'request_date' => $now,
             'status' => 1,
             'track' => 1,
@@ -249,7 +272,9 @@ class LeaveUserController extends Controller
             ->join('users', 'users.id_staff', '=', 'hr_staff_info.FID')
             ->select('DEPT_NAME as id_department', 'Nama as name', 'JABATAN as position', 'users.role')
             ->where('Fid', Auth::user()->id_staff)
+            ->whereNull('users.deleted_at')
             ->first();
+
 
         $department = $employee->id_department;
         if($department == 'a000000001'){
@@ -302,6 +327,72 @@ class LeaveUserController extends Controller
             $department_name = 'UNDEFINED';
         }
 
+        $dp = DB::table('manager_on_duty as md')
+            ->select('md.*')
+            ->distinct()
+            ->leftJoin('leave_request_dp as lrd', 'md.id', '=', 'lrd.id_mod')
+            ->where('md.id_staff', Auth::user()->id_staff)
+            ->where(function ($query) {
+                $query->whereNull('lrd.approval')
+                    ->orWhereNotIn('lrd.approval', [1, 2]);
+            })
+            ->whereNotExists(function ($subquery) {
+                $subquery->select(DB::raw(1))
+                    ->from('leave_request_dp as lrd_pending')
+                    ->whereRaw('lrd_pending.id_mod = md.id')
+                    ->where('lrd_pending.approval', 1);
+            })
+            ->where(function ($query) {
+                $query->where('md.expire', '>', now())
+                    ->orWhereNull('md.expire');
+            })
+            ->orderByRaw('ISNULL(md.expire), md.expire, md.date ASC')
+            ->get();
+
+        $eo = DB::table('extra_off as eo')
+        ->select('eo.*')
+        ->distinct()
+        ->leftJoin('leave_request_eo as lre', 'eo.id', '=', 'lre.id_eo')
+        ->where('eo.id_staff', '=', Auth::user()->id_staff)
+        ->where(function ($query) {
+            $query->whereNull('lre.approval')
+                ->orWhereNotIn('lre.approval', [1, 2]);
+        })
+        ->whereNotExists(function ($subquery) {
+            $subquery->select(DB::raw(1))
+                ->from('leave_request_eo as lrd_pending')
+                ->whereRaw('lrd_pending.id_eo = eo.id')
+                ->where('lrd_pending.approval', 1);
+        })
+        ->where(function ($query) {
+            $query->where('eo.expire', '>', now())
+                ->orWhereNull('eo.expire');
+        })
+        ->orderBy('eo.date', 'ASC')
+        ->get();
+
+        $al = DB::table('annual_leave as al')
+        ->select('al.*')
+        ->distinct()
+        ->leftJoin('leave_request_al as lra', 'al.id', '=', 'lra.id_al')
+        ->where('al.id_staff', '=', Auth::user()->id_staff)
+        ->where(function ($query) {
+            $query->whereNull('lra.approval')
+                ->orWhereNotIn('lra.approval', [1, 2]);
+        })
+        ->whereNotExists(function ($subquery) {
+            $subquery->select(DB::raw(1))
+                ->from('leave_request_al as lra_pending')
+                ->whereRaw('lra_pending.id_al = al.id')
+                ->where('lra_pending.approval', 1);
+        })
+        ->where(function ($query) {
+            $query->where('al.expire', '>', now())
+                ->orWhereNull('al.expire');
+        })
+        ->orderBy('al.date', 'ASC')
+        ->get();
+
 
         DB::table('leave_request')
             ->where('request_date', $now)
@@ -316,7 +407,7 @@ class LeaveUserController extends Controller
         if($input['inputDp']){
             foreach ($input['inputDp'] as $key => $value) {
                 $dpDate[$key]['id_leave_request'] = $leave->id;
-                $dpDate[$key]['id_mod'] = $value['id'];
+                $dpDate[$key]['id_mod'] = $dp[$key]->id;
                 $dpDate[$key]['date'] = $value['date'];
                 $dpDate[$key]['approval'] = 1;
             }
@@ -326,7 +417,7 @@ class LeaveUserController extends Controller
         if($input['inputEo']){
             foreach ($input['inputEo'] as $key => $value) {
                 $eoDate[$key]['id_leave_request'] = $leave->id;
-                $eoDate[$key]['id_eo'] = $value['id'];
+                $eoDate[$key]['id_eo'] = $eo[$key]->id;
                 $eoDate[$key]['date'] = $value['date'];
                 $eoDate[$key]['approval'] = 1;
             }
@@ -336,7 +427,7 @@ class LeaveUserController extends Controller
         if($input['inputAl']){
             foreach ($input['inputAl'] as $key => $value) {
                 $alDate[$key]['id_leave_request'] = $leave->id;
-                $alDate[$key]['id_al'] = $value['id'];
+                $alDate[$key]['id_al'] = $al[$key]->id;
                 $alDate[$key]['date'] = $value['date'];
                 $alDate[$key]['approval'] = 1;
             }
@@ -355,40 +446,56 @@ class LeaveUserController extends Controller
                     ->orWhere('role', 3)
                     ->orWhere('role', 4);
             })
+            ->where('users.deleted_at', null)
             ->get();
         }else if($employee->role == 2){
             $users = DB::table('users')
             ->join('hr_staff_info', 'users.id_staff', '=', 'hr_staff_info.FID')
             ->join('telegram_session', 'telegram_session.id_staff', '=', 'hr_staff_info.FID')
             ->select('telegram_session.id')
-            ->where('users.id_unit', $employee->DEPT_NAME)
+            ->where('users.id_unit', $employee->id_department)
             ->where('telegram_session.status', 'Active')
             ->where(function($query) {
                 $query->where('role', 3)
                     ->orWhere('role', 4);
             })
+            ->where('users.deleted_at', null)
             ->get();
         }else if($employee->role == 3){
             $users = DB::table('users')
             ->join('hr_staff_info', 'users.id_staff', '=', 'hr_staff_info.FID')
             ->join('telegram_session', 'telegram_session.id_staff', '=', 'hr_staff_info.FID')
             ->select('telegram_session.id')
-            ->where('users.id_unit', $employee->DEPT_NAME)
+            ->where('users.id_unit', $employee->id_department)
             ->where('telegram_session.status', 'Active')
             ->where(function($query) {
                 $query->where('role', 4);
             })
+            ->where('users.deleted_at', null)
             ->get();
         }else if($employee->role == 4){
             $users = DB::table('users')
             ->join('hr_staff_info', 'users.id_staff', '=', 'hr_staff_info.FID')
             ->join('telegram_session', 'telegram_session.id_staff', '=', 'hr_staff_info.FID')
             ->select('telegram_session.id')
-            ->where('users.id_unit', $employee->DEPT_NAME)
+            ->where('users.id_unit', $employee->id_department)
             ->where('telegram_session.status', 'Active')
             ->where(function($query) {
                 $query->where('role', 5);
             })
+            ->where('users.deleted_at', null)
+            ->get();
+        }else if($employee->role == 5){
+            $users = DB::table('users')
+            ->join('hr_staff_info', 'users.id_staff', '=', 'hr_staff_info.FID')
+            ->join('telegram_session', 'telegram_session.id_staff', '=', 'hr_staff_info.FID')
+            ->select('telegram_session.id')
+            ->where('users.id_unit', $employee->id_department)
+            ->where('telegram_session.status', 'Active')
+            ->where(function($query) {
+                $query->where('role', 6);
+            })
+            ->where('users.deleted_at', null)
             ->get();
         }
 

@@ -23,6 +23,12 @@ class OutOfDutyUserController extends Controller
         })
         ->orderBy($filter, $sort)
         ->paginate(10);
+        return response()->json([
+            'status' => true,
+            'message' => 'Data Out of Duty',
+            'data' => $data,
+            'id' => Auth::user()->id_staff
+        ], 200);
 
         if($data->isEmpty()){
             return response()->json([
@@ -41,14 +47,40 @@ class OutOfDutyUserController extends Controller
 
     public function show ($id) {
         $data = DB::table('out_of_duty')
-        ->where('id', $id)
-        ->where('id_staff', Auth::user()->id_staff)
+        ->leftJoin(DB::raw('(SELECT users.id_staff, users.deleted_at FROM users WHERE users.deleted_at IS NULL) AS us'), function ($join) {
+            $join->on('out_of_duty.id_staff', '=', 'us.id_staff');
+        })
+        ->select('out_of_duty.*', 'us.*')
+        ->where('out_of_duty.id', $id)
         ->first();
+
+        $step = DB::table('out_of_duty as od')
+            ->select(DB::raw("
+                CASE
+                    WHEN odu.track = 1 AND odu.status = 1 THEN 'Approved by Admin'
+                    WHEN odu.track = 2 AND odu.status = 1 THEN 'Approved by Chief'
+                    WHEN odu.track = 3 AND odu.status = 1 THEN 'Approved Asst. HOD'
+                    WHEN odu.track = 4 AND odu.status = 1 THEN 'Approved by HOD'
+                    WHEN odu.track = 5 AND odu.status = 1 THEN 'Approved by GM'
+                    WHEN odu.track = 6 AND odu.status = 1 THEN 'Acknowledge by HRD'
+                    WHEN odu.track = 1 AND odu.status = 0 THEN 'Rejected by Admin'
+                    WHEN odu.track = 2 AND odu.status = 0 THEN 'Rejected by Chief'
+                    WHEN odu.track = 3 AND odu.status = 0 THEN 'Rejected Asst. HOD'
+                    WHEN odu.track = 4 AND odu.status = 0 THEN 'Rejected by HOD'
+                    WHEN odu.track = 5 AND odu.status = 0 THEN 'Rejected by GM'
+                    WHEN odu.track = 6 AND odu.status = 0 THEN 'Rejected by HRD'
+                END as approval_status"), 'u.role', 'odu.track', 'odu.status', 'si.name', 'odu.created_at')
+            ->join('out_of_duty_update as odu', 'od.id', '=', 'odu.id_out_of_duty')
+            ->join('users as u', 'u.id', '=', 'odu.id_user')
+            ->join('staff AS si', 'si.id', '=', 'u.id_staff')
+            ->where('od.id', $id)
+            ->get();
 
         return response()->json([
             'status' => true,
             'message' => 'Data Out of Duty',
-            'data' => $data
+            'data' => $data,
+            'step' => $step
         ], 200);
     }
 
@@ -86,6 +118,7 @@ class OutOfDutyUserController extends Controller
         $staff = DB::table('hr_staff_info AS si')
             ->join('users AS u', 'si.FID', '=', 'u.id_staff')
             ->where('FID', $id)
+            ->where('u.deleted_at', null)
             ->first();
 
         $input['id_staff'] = $id;
@@ -107,6 +140,7 @@ class OutOfDutyUserController extends Controller
                     ->orWhere('role', 3)
                     ->orWhere('role', 4);
             })
+            ->where('users.deleted_at', null)
             ->get();
         }else if($staff->role == 2){
             $users = DB::table('users')
@@ -119,6 +153,7 @@ class OutOfDutyUserController extends Controller
                 $query->where('role', 3)
                     ->orWhere('role', 4);
             })
+            ->where('users.deleted_at', null)
             ->get();
         }else if($staff->role == 3){
             $users = DB::table('users')
@@ -130,6 +165,7 @@ class OutOfDutyUserController extends Controller
             ->where(function($query) {
                 $query->where('role', 4);
             })
+            ->where('users.deleted_at', null)
             ->get();
         }else if($staff->role == 4){
             $users = DB::table('users')
@@ -141,9 +177,21 @@ class OutOfDutyUserController extends Controller
             ->where(function($query) {
                 $query->where('role', 5);
             })
+            ->where('users.deleted_at', null)
+            ->get();
+        }else if($staff->role == 5){
+            $users = DB::table('users')
+            ->join('hr_staff_info', 'users.id_staff', '=', 'hr_staff_info.FID')
+            ->join('telegram_session', 'telegram_session.id_staff', '=', 'hr_staff_info.FID')
+            ->select('telegram_session.id')
+            ->where('telegram_session.status', 'Active')
+            ->where(function($query) {
+                $query->where('role', 6);
+            })
+            ->where('users.deleted_at', null)
             ->get();
         }
-        
+            
         if($users){
             $message = "<pre>";
             $message .= "<b>Out of Duty request from :</b>";
@@ -163,7 +211,7 @@ class OutOfDutyUserController extends Controller
             }
         }
 
-        // $outOfDuty = DB::table('out_of_duty')->insert($input);
+        $outOfDuty = DB::table('out_of_duty')->insert($input);
 
         return response()->json([
             'status' => true,

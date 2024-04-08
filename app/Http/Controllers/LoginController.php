@@ -7,6 +7,7 @@ use App\Models\Login;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Hash;
 use Illuminate\Support\Facades\Log;
+use Telegram\Bot\Laravel\Facades\Telegram;
 
 class LoginController extends Controller
 {
@@ -38,6 +39,25 @@ class LoginController extends Controller
         $login->otp = $otp;
         $login->exp_date = $exp_date;
         $login->save();
+
+        $users = DB::table('hr_staff_info')
+        ->join('telegram_session', 'telegram_session.id_staff', '=', 'hr_staff_info.FID')
+        ->select('telegram_session.id')
+        ->where('telegram_session.status', 'Active')
+        ->where('hr_staff_info.FID', $id_staff)
+        ->get();
+
+        if($users){
+            $message = "Kode OTP anda adalah <b>$otp</b> dan akan kadaluarsa pada <b>$exp_date</b>";
+
+            foreach($users as $user){
+                Telegram::sendMessage([
+                    'chat_id' => $user->id,
+                    'text' => $message,
+                    'parse_mode' => 'HTML'
+                ]);
+            }
+        }
 
         return response()->json([
             'success' => true,

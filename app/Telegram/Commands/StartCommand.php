@@ -42,5 +42,7 @@ class StartCommand extends Command
                 ])
             ]);
         }
+
+        return;
     }
 }

@@ -177,7 +177,7 @@ class StaffController extends Controller
             'Notelp' => 'required'
         ]);
 
-        $input['TGL_MASUK'] = Carbon::createFromFormat('Y-m-d', $input['TGL_MASUK'])->format('d/m/Y');
+        $input['TGL_MASUK'] = Carbon::createFromFormat('Y-m-d', $input['TGL_MASUK'])->format('Y-m-d');
         $result = DB::table('hr_staff_info')    
         ->where('FID', $input['FID'])
         ->update($input);
@@ -230,21 +230,27 @@ class StaffController extends Controller
 
         if($request->input('password') != ""){
             $input['password'] = bcrypt($request->input('password'));
+
+            DB::table('users')
+            ->where('id_staff', $id)
+            ->update([
+                'phone_number' => $input['Notelp'],
+                'username' => $input['username'],
+                'password' => $input['password']
+            ]);
+        }else{
+            DB::table('staff')
+            ->join('users', 'staff.id', '=', 'users.id_staff')
+            ->where('staff.id', $id)
+            ->update([
+                'phone_number' => $input['Notelp'],
+                'username' => $input['username']
+            ]);
         }
         $result = DB::table('hr_staff_info')
         ->join('users', 'hr_staff_info.FID', '=', 'users.id_staff')
         ->where('FID', $id)
         ->update($input);
-
-        DB::table('staff')
-        ->join('users', 'staff.id', '=', 'users.id_staff')
-        ->where('id', $id)
-        ->update([
-            'phone_number' => $input['Notelp'],
-            'username' => $input['username'],
-            'password' => $input['password']
-        ]);
-
 
         return response()->json([
             'status' => true,
