@@ -332,7 +332,7 @@ class FormController extends Controller
         ->where('f.end_datetime', '>=', now())
         ->where(function ($query) {
             $query->whereNull('sd.id')
-                  ->orWhere('sd.status', '=', 0);
+                  ->orWhereNull('sd.status');
         })
         ->whereRaw('NOT EXISTS (SELECT position FROM staff WHERE id = ? AND position LIKE "%trainee%")', [$staffId])
         ->select('f.id', 'f.title')
@@ -365,7 +365,7 @@ class FormController extends Controller
         ->where('f.end_datetime', '>=', now())
         ->where(function ($query) {
             $query->whereNull('sd.id')
-                  ->orWhere('sd.status', '=', 0);
+                  ->orWhereNull('sd.status');
         })
         ->whereRaw('NOT EXISTS (SELECT position FROM staff WHERE id = ? AND position LIKE "%trainee%")', [$staffId])
         ->select('f.id', 'f.title')
@@ -794,6 +794,8 @@ class FormController extends Controller
             'sim_a_image' => 'image|mimes:jpeg,png,jpg|max:1024',
             'bpjs_tk_image' => 'required|image|mimes:jpeg,png,jpg|max:1024',
             'bpjs_kesehatan_image' => 'required|image|mimes:jpeg,png,jpg|max:1024',
+            'marriage_certificate_image' => 'image|mimes:jpeg,png,jpg|max:1024',
+            'divorce_certificate_image' => 'image|mimes:jpeg,png,jpg|max:1024',
             'status' => 'required'
         ],[
             'status.required' => 'Please check the box to proceed.'
@@ -817,6 +819,12 @@ class FormController extends Controller
 
             if(isset($input['sim_a_image'])){
                 $input['sim_a_image'] = Storage::putFileAs($uploadFolder, $request->file('sim_a_image'), 'SIM_A'.'_'.$data['id_form'].'_'.date('Y-m-d_H-i-s').'.'.$request->file('sim_a_image')->getClientOriginalExtension());
+            }
+            if(isset($input['marriage_certificate_image'])){
+                $input['marriage_certificate_image'] = Storage::putFileAs($uploadFolder, $request->file('marriage_certificate_image'), 'MARRIAGE_CERTIFICATE'.'_'.$data['id_form'].'_'.date('Y-m-d_H-i-s').'.'.$request->file('marriage_certificate_image')->getClientOriginalExtension());
+            }
+            if(isset($input['divorce_certificate_image'])){
+                $input['divorce_certificate_image'] = Storage::putFileAs($uploadFolder, $request->file('divorce_certificate_image'), 'DIVORCE_CERTIFICATE'.'_'.$data['id_form'].'_'.date('Y-m-d_H-i-s').'.'.$request->file('divorce_certificate_image')->getClientOriginalExtension());
             }
 
             $data = DB::table('staff_data')
