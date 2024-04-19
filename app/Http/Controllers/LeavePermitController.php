@@ -1614,7 +1614,8 @@ class LeavePermitController extends Controller
             ->margins(2, 2, 2, 2, Unit::Centimeter)
             ->name('leave-'.now()->format('Y-m-d').'.pdf')
             ->withBrowsershot(function (Browsershot $browsershot) {
-                $browsershot->scale(1);
+                $browsershot->scale(1)
+                    ->setChromePath('C:\Users\henry\.cache\puppeteer\chrome\win64-123.0.6312.122\chrome-win64\chrome.exe');
             });
     }
 

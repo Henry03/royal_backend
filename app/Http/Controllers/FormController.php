@@ -20,6 +20,7 @@ class FormController extends Controller
     public function index() {
         $data = DB::table('form as f')
             ->select('f.id', 'f.title')
+            ->selectRaw('SUM(CASE WHEN sd.status = 0 THEN 1 ELSE 0 END) AS waiting')
             ->selectRaw('SUM(CASE WHEN sd.status = 1 THEN 1 ELSE 0 END) AS form_filled')
             ->selectRaw('f.participant')
             ->selectRaw('ROUND((SUM(CASE WHEN sd.status = 1 THEN 1 ELSE 0 END) / f.participant) * 100, 2) AS percentage')

@@ -5,6 +5,7 @@ namespace App\Http\Controllers;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Auth;
+use Spatie\Browsershot\Browsershot;
 use Spatie\LaravelPdf\Facades\Pdf;
 use Telegram\Bot\Laravel\Facades\Telegram;
 
@@ -526,6 +527,10 @@ class OutOfDutyPermitController extends Controller
 
         return Pdf::view('outofduty', ['data' => $data, 'users' => $user])
             ->format('a4')
-            ->name('out_of_duty-'.now()->format('Y-m-d').'.pdf');
+            ->name('out_of_duty-'.now()->format('Y-m-d').'.pdf')
+            ->withBrowsershot(function (Browsershot $browsershot) {
+                $browsershot->scale(1)
+                    ->setChromePath('C:\Users\henry\.cache\puppeteer\chrome\win64-123.0.6312.122\chrome-win64\chrome.exe');
+            });;
     }
 }

@@ -188,6 +188,12 @@ class ManagerOnDutyController extends Controller
         ->orderBy('si.name', 'asc')
         ->get();
 
+        $calendar = DB::table('ta_hari_libur')
+            ->where(DB::raw("DATE_FORMAT(STR_TO_DATE(tgl_libur, '%d/%m/%Y'), '%Y-%m')"), '=', $date)
+            ->select('Nama_libur as name', DB::raw('STR_TO_DATE(tgl_libur, "%d/%m/%Y") as date'))
+            ->orderBy(DB::raw("STR_TO_DATE(tgl_libur, '%d/%m/%Y')"), 'ASC')
+            ->get();
+
         $scheduleList = DB::table('ta_timetable as tt')
             ->select('tt.ID as id', 'tt.Nama_Jadwal as name')
             ->get();
@@ -235,30 +241,30 @@ class ManagerOnDutyController extends Controller
             ->where('lra.approval', '=', '2')
             ->get();
 
-        $shift1 = $result = DB::table('ta_timetable as tt')
-        ->leftJoin('ta_shift as ts', 'ts.ID', '=', 'tt.Jadwal1')
-        ->select('tt.ID as id', 'tt.Nama_Jadwal as schedule_name', 'ts.Nama_Shift as shift_name', 'ts.Jam_masuk as time_in', 'ts.Jam_keluar as time_out')
-        ->get();
+        // $shift1 = $result = DB::table('ta_timetable as tt')
+        // ->leftJoin('ta_shift as ts', 'ts.ID', '=', 'tt.Jadwal1')
+        // ->select('tt.ID as id', 'tt.Nama_Jadwal as schedule_name', 'ts.Nama_Shift as shift_name', 'ts.Jam_masuk as time_in', 'ts.Jam_keluar as time_out')
+        // ->get();
 
-        $shift2 = DB::table('ta_timetable as tt')
-        ->leftJoin('ta_shift as ts', 'ts.ID', '=', 'tt.Jadwal1')
-        ->select('tt.ID as id', 'tt.Nama_Jadwal as schedule_name', 'ts.Nama_Shift as shift_name', 'ts.Jam_masuk as time_in', 'ts.Jam_keluar as time_out')
-        ->get();
+        // $shift2 = DB::table('ta_timetable as tt')
+        // ->leftJoin('ta_shift as ts', 'ts.ID', '=', 'tt.Jadwal1')
+        // ->select('tt.ID as id', 'tt.Nama_Jadwal as schedule_name', 'ts.Nama_Shift as shift_name', 'ts.Jam_masuk as time_in', 'ts.Jam_keluar as time_out')
+        // ->get();
 
-        $shift3 = DB::table('ta_timetable as tt')
-        ->leftJoin('ta_shift as ts', 'ts.ID', '=', 'tt.Jadwal1')
-        ->select('tt.ID as id', 'tt.Nama_Jadwal as schedule_name', 'ts.Nama_Shift as shift_name', 'ts.Jam_masuk as time_in', 'ts.Jam_keluar as time_out')
-        ->get();
+        // $shift3 = DB::table('ta_timetable as tt')
+        // ->leftJoin('ta_shift as ts', 'ts.ID', '=', 'tt.Jadwal1')
+        // ->select('tt.ID as id', 'tt.Nama_Jadwal as schedule_name', 'ts.Nama_Shift as shift_name', 'ts.Jam_masuk as time_in', 'ts.Jam_keluar as time_out')
+        // ->get();
 
-        $shift4 = DB::table('ta_timetable as tt')
-        ->leftJoin('ta_shift as ts', 'ts.ID', '=', 'tt.Jadwal4')
-        ->select('tt.ID as id', 'tt.Nama_Jadwal as schedule_name', 'ts.Nama_Shift as shift_name', 'ts.Jam_masuk as time_in', 'ts.Jam_keluar as time_out')
-        ->get();
+        // $shift4 = DB::table('ta_timetable as tt')
+        // ->leftJoin('ta_shift as ts', 'ts.ID', '=', 'tt.Jadwal4')
+        // ->select('tt.ID as id', 'tt.Nama_Jadwal as schedule_name', 'ts.Nama_Shift as shift_name', 'ts.Jam_masuk as time_in', 'ts.Jam_keluar as time_out')
+        // ->get();
 
-        $shift5 = DB::table('ta_timetable as tt')
-        ->leftJoin('ta_shift as ts', 'ts.ID', '=', 'tt.Jadwal5')
-        ->select('tt.ID as id', 'tt.Nama_Jadwal as schedule_name', 'ts.Nama_Shift as shift_name', 'ts.Jam_masuk as time_in', 'ts.Jam_keluar as time_out')
-        ->get();
+        // $shift5 = DB::table('ta_timetable as tt')
+        // ->leftJoin('ta_shift as ts', 'ts.ID', '=', 'tt.Jadwal5')
+        // ->select('tt.ID as id', 'tt.Nama_Jadwal as schedule_name', 'ts.Nama_Shift as shift_name', 'ts.Jam_masuk as time_in', 'ts.Jam_keluar as time_out')
+        // ->get();
 
 
         
@@ -363,6 +369,7 @@ class ManagerOnDutyController extends Controller
             'message' => 'Calendar Data',
             'data' => $dateRange,
             'mergedData' => $mergedData,
+            'calendar' => $calendar,
             'schedule' => $scheduleList,
         ], 200);
     }

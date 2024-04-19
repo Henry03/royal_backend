@@ -168,6 +168,9 @@ Route::controller(AttendanceController::class)->group( function() {
     Route::middleware('employee.token.check')->group(function () {
         Route::post('/attendance', 'indexbyEmployee');
     });
+    Route::middleware(['auth:sanctum', 'ability:1,2,3,4,5,6'])->group(function () {
+        Route::post('/user/attendance/staff', 'indexbyStaff');
+    });
     Route::middleware(['auth:sanctum', 'ability:6'])->group(function () {
         Route::post('/user/attendance', 'indexAll');
     });
