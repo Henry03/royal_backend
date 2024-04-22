@@ -36,5 +36,7 @@ class RevokeCommand extends Command
                 'text' => 'Maaf, terjadi kesalahan. Silahkan coba lagi.',
             ]);
         }
+
+        return;
     }
 }
