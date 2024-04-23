@@ -76,7 +76,7 @@ class StaffController extends Controller
 
         $result = DB::table('hr_staff_info AS si')
         ->join('hr_unit AS u', 'si.DEPT_NAME', '=', 'u.IdUnit')
-        ->select('si.FID AS FID', 'si.Nama AS Nama', 'si.NIK', 'u.Namaunit', 'si.DEPT_NAME', 'si.JABATAN', 'si.TGL_MASUK', 'si.Notelp')
+        ->select('si.FID AS FID', 'si.Nama AS Nama', 'si.NIK', 'u.Namaunit', 'si.DEPT_NAME', 'si.JABATAN', DB::raw("str_to_date(si.TGL_MASUK, '%d/%m/%Y') as TGL_MASUK"), 'si.Notelp')
         ->where('si.FID', '=', $id)
         ->first();
 
@@ -269,6 +269,10 @@ class StaffController extends Controller
         DB::table('staff')
         ->where('id', $id)
         ->update(['status' => 'Inactive']);
+
+        DB::table('eo_entitlement')
+        ->where('id_staff', $id)
+        ->delete();
         
         if($result){
             return response()->json([
@@ -367,15 +371,6 @@ class StaffController extends Controller
                 'entry_date' => Carbon::createFromFormat('d/m/Y', str_replace('\/', '/', $rowData[4]))->format('d/m/Y'),
                 'phone_number' => $rowData[5],
             ];
-
-            // DB::table('hr_staff_info')->insert([
-            //     'Nama' => $rowData[0],
-            //     'NIK' => $rowData[1],
-            //     'DEPT_NAME' => $unit,
-            //     'JABATAN' => $rowData[3],
-            //     'TGL_MASUK' => Carbon::createFromFormat('d/m/Y', str_replace('\/', '/', $rowData[4]))->format('d/m/Y'),
-            //     'Notelp' => $rowData[5],
-            // ]);
         }
 
         return response()->json([
@@ -386,6 +381,18 @@ class StaffController extends Controller
     }
 
     public function importArray (Request $request){
+        $input = $request->validate([
+            'data' => 'required',
+            'data.*.name' => 'required',
+            'data.*.nik' => 'required',
+            'data.*.id_unit' => 'required',
+            'data.*.position' => 'required',
+            'data.*.entry_date' => 'required|date_format:d/m/Y',
+            'data.*.phone_number' => 'required'
+
+        ],[
+            'data.*.entry_date.date_format' => 'The entry date does not match the format d/m/Y.',
+        ]);
         $input = $request->input('data');
 
         foreach($input as $row){
@@ -394,7 +401,7 @@ class StaffController extends Controller
                 'NIK' => $row['nik'],
                 'DEPT_NAME' => $row['id_unit'],
                 'JABATAN' => $row['position'],
-                'TGL_MASUK' => Carbon::createFromFormat('d/m/Y', str_replace('\/', '/', $row['entry_date']))->format('Y-m-d'),
+                'TGL_MASUK' => $row['entry_date'],
                 'Notelp' => $row['phone_number'],
             ]);
 
@@ -404,7 +411,7 @@ class StaffController extends Controller
                 'name' => $row['name'],
                 'nik' => $row['nik'],
                 'position' => $row['position'],
-                'entry_date' => $row['entry_date'],
+                'entry_date' => Carbon::createFromFormat('d/m/Y', $row['entry_date'])->format('Y-m-d'),
                 'phone_number' => $row['phone_number'],
                 'status' => 'Active'
             ]);

@@ -22,5 +22,15 @@ class StorageController extends Controller
         // return response()->download($filePath, 'staff_import_template.xlsx');
     }
 
+    public function downloadAnnualLeaveTemplate(Request $request)
+    {
+        return response()->download(public_path('storage\annual_leave_import_template.csv'), 'annual_leave_import_template.csv');
+    }
+
+    public function downloadExtraOffTemplate(Request $request)
+    {
+        return response()->download(public_path('storage\extra_off_import_template.csv'), 'extra_off_import_template.csv');
+    }
+
     
 }

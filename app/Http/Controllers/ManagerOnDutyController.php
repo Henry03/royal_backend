@@ -177,13 +177,12 @@ class ManagerOnDutyController extends Controller
             ->first();
         
             
-        $mod = 
-        DB::table('staff AS si')
-    ->leftJoin(DB::raw("(SELECT m.date, m.type, m.id, m.id_staff FROM manager_on_duty AS m WHERE DATE_FORMAT(m.date, '%Y-%m') = '$date') AS md"), 'si.id', '=', 'md.id_staff')
-    ->select('si.id as id_staff', 'si.name', 'si.position', 'md.date', 'md.type', 'md.id')
-    ->where('si.id_unit', $user->id_unit)
-    ->orderBy('si.name', 'ASC')
-    ->get();
+        $mod = DB::table('staff AS si')
+            ->leftJoin(DB::raw("(SELECT m.date, m.type, m.id, m.id_staff FROM manager_on_duty AS m WHERE DATE_FORMAT(m.date, '%Y-%m') = '$date') AS md"), 'si.id', '=', 'md.id_staff')
+            ->select('si.id as id_staff', 'si.name', 'si.position', 'md.date', 'md.type', 'md.id')
+            ->where('si.id_unit', $user->id_unit)
+            ->orderBy('si.name', 'ASC')
+            ->get();
 
         $calendar = DB::table('ta_hari_libur')
             ->where(DB::raw("DATE_FORMAT(STR_TO_DATE(tgl_libur, '%d/%m/%Y'), '%Y-%m')"), '=', $date)

@@ -9,6 +9,7 @@ use App\Http\Controllers\OutOfDutyPermitController;
 use App\Http\Controllers\UserController;
 use App\Http\Controllers\AttendanceController;
 use App\Http\Controllers\FormController;
+use App\Http\Controllers\ImportController;
 use App\Http\Controllers\LeavePermitController;
 use App\Http\Controllers\LeaveUserController;
 use App\Http\Controllers\ManagerOnDutyController;
@@ -275,6 +276,8 @@ Route::controller(unitController::class)->group( function() {
 
 Route::controller(StorageController::class)->group( function() {
     Route::get('/download/staff/template', 'downloadStaffTemplate');
+    Route::get('/download/annualleave/template', 'downloadAnnualLeaveTemplate');
+    Route::get('/download/extraoff/template', 'downloadExtraOffTemplate');
     // Route::post('/attendance', 'indexAll');
 });
 
@@ -321,7 +324,15 @@ Route::controller(FormController::class)->group( function() {
         Route::post('/form/family/store', 'userStaffFamilyStore');
         Route::post('/form/emergency/store', 'userStaffEmergencyStore');
         Route::post('/form/document/store', 'userStaffDocumentStore');
-    });
+    }); 
+});
 
-    
+Route::controller(ImportController::class)->group( function() {
+    Route::middleware(['auth:sanctum', 'ability:6'])->group(function () {
+        Route::post('/import/csv/al', 'uploadCsvAL');
+        Route::post('/import/array/al', 'importArrayAL');
+
+        Route::post('/import/csv/eo', 'uploadCsvEO');
+        Route::post('/import/array/eo', 'importArrayEO');
+    });
 });
