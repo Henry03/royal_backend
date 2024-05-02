@@ -74,10 +74,10 @@ class StaffController extends Controller
     public function show (Request $request){
         $id = $request->input('id');
 
-        $result = DB::table('hr_staff_info AS si')
-        ->join('hr_unit AS u', 'si.DEPT_NAME', '=', 'u.IdUnit')
-        ->select('si.FID AS FID', 'si.Nama AS Nama', 'si.NIK', 'u.Namaunit', 'si.DEPT_NAME', 'si.JABATAN', DB::raw("str_to_date(si.TGL_MASUK, '%d/%m/%Y') as TGL_MASUK"), 'si.Notelp')
-        ->where('si.FID', '=', $id)
+        $result = DB::table('staff AS si')
+        ->join('hr_unit AS u', 'si.id_unit', '=', 'u.IdUnit')
+        ->select('si.id AS FID', 'si.name AS Nama', 'si.nik as NIK', 'u.Namaunit', 'si.id_unit as DEPT_NAME', 'si.position as JABATAN', DB::raw("entry_date as TGL_MASUK"), 'si.phone_number as Notelp', 'nik_ktp', 'npwp', 'blood_type', 'birth_date')
+        ->where('si.id', '=', $id)
         ->first();
 
         return response()->json([
@@ -131,25 +131,113 @@ class StaffController extends Controller
             'DEPT_NAME' => 'required',
             'JABATAN' => 'required',
             'TGL_MASUK' => 'required',
-            'Notelp' => 'required'
+            'Notelp' => 'required|numeric|digits_between:10,13',
+            'nik_ktp' => 'required|numeric|digits:16',
+            'blood_type' => 'required',
+            'birth_date' => 'required',
         ]);
 
-        $input['TGL_MASUK'] = Carbon::createFromFormat('Y-m-d', $input['TGL_MASUK'])->format('d/m/Y');
+        if($request->input('npwp')){
+            $request->validate([
+                'npwp' => 'regex:/^([\d]{2})[.]([\d]{3})[.]([\d]{3})[.][\d][-]([\d]{3})[.]([\d]{3})$/'
+            ]);
+            $input['npwp'] = $request->input('npwp');
+        }else{
+            $input['npwp'] = null;
+        }
 
-        $result = DB::table('hr_staff_info')
-        ->insert($input);
+        if(strcasecmp(strtolower($input['JABATAN']), 'trainee') == 0){
+            DB::beginTransaction();
+            try {
+                $fidCount = DB::table('fid_count as fc')
+                    ->first();
+                
+                $fidCount->trainee += 1;
+                DB::table('fid_count')
+                    ->where('id', $fidCount->id)
+                    ->update(['trainee' => $fidCount->trainee]);
+                
+                $date = Carbon::createFromFormat('Y-m-d', $input['TGL_MASUK']);
 
-        DB::table('staff')
-        ->insert([
-            'id' => DB::getPdo()->lastInsertId(),
-            'id_unit' => $input['DEPT_NAME'],
-            'name' => $input['Nama'],
-            'nik' => $input['NIK'],
-            'position' => $input['JABATAN'],
-            'entry_date' => $request->input('TGL_MASUK'),
-            'phone_number' => $input['Notelp'],
-            'status' => 'Active'
-        ]);
+                $result = DB::table('hr_staff_info')
+                ->insert([
+                    'FID' => $fidCount->trainee,
+                    'Nama' => $input['Nama'],
+                    'NIK' => $input['NIK'],
+                    'DEPT_NAME' => $input['DEPT_NAME'],
+                    'JABATAN' => $input['JABATAN'],
+                    'TGL_MASUK' => Carbon::createFromFormat('Y-m-d', $input['TGL_MASUK'])->format('d/m/Y'),
+                    'Notelp' => $input['Notelp'],
+                ]);
+
+                DB::table('staff')
+                ->insert([
+                    'id' => $fidCount->trainee,
+                    'id_unit' => $input['DEPT_NAME'],
+                    'name' => $input['Nama'],
+                    'nik' => $input['NIK'],
+                    'position' => $input['JABATAN'],
+                    'entry_date' => $request->input('TGL_MASUK'),
+                    'phone_number' => $input['Notelp'],
+                    'birth_date' => $input['birth_date'],
+                    'nik_ktp' => $input['nik_ktp'],
+                    'npwp' => $input['npwp'],
+                    'blood_type' => $input['blood_type'],
+                    'status' => 'Active'
+                ]);
+                DB::commit();
+            }
+            catch (\Exception $e) {
+                DB::rollback();
+                return response()->json(['error' => $e->getMessage()], 500);
+            }
+        }else{
+            DB::beginTransaction();
+            try {
+                $fidCount = DB::table('fid_count as fc')
+                    ->first();
+                
+                $fidCount->staff += 1;
+                $test = DB::table('fid_count as fc')
+                    ->where('fc.id', $fidCount->id)
+                    ->update(['fc.staff' => $fidCount->staff]);
+                
+                $date = Carbon::createFromFormat('Y-m-d', $input['TGL_MASUK']);
+
+                $result = DB::table('hr_staff_info')
+                ->insert([
+                    'FID' => $date->format('y').$date->format('m').$fidCount->staff,
+                    'Nama' => $input['Nama'],
+                    'NIK' => $input['NIK'],
+                    'DEPT_NAME' => $input['DEPT_NAME'],
+                    'JABATAN' => $input['JABATAN'],
+                    'TGL_MASUK' => Carbon::createFromFormat('Y-m-d', $input['TGL_MASUK'])->format('d/m/Y'),
+                    'Notelp' => $input['Notelp'],
+                ]);
+
+                DB::table('staff')
+                ->insert([
+                    'id' => $date->format('y').$date->format('m').$fidCount->staff,
+                    'id_unit' => $input['DEPT_NAME'],
+                    'name' => $input['Nama'],
+                    'nik' => $input['NIK'],
+                    'position' => $input['JABATAN'],
+                    'entry_date' => $request->input('TGL_MASUK'),
+                    'phone_number' => $input['Notelp'],
+                    'birth_date' => $input['birth_date'],
+                    'nik_ktp' => $input['nik_ktp'],
+                    'npwp' => $input['npwp'],
+                    'blood_type' => $input['blood_type'],
+                    'status' => 'Active'
+                ]);
+                DB::commit();
+            }
+            catch (\Exception $e) {
+                DB::rollback();
+                return response()->json(['error' => $e->getMessage()], 500);
+            }
+        }
+        
         
         if($result){
             return response()->json([
@@ -174,13 +262,32 @@ class StaffController extends Controller
             'DEPT_NAME' => 'required',
             'JABATAN' => 'required',
             'TGL_MASUK' => 'required',
-            'Notelp' => 'required'
+            'Notelp' => 'required',
+            'nik_ktp' => 'required|numeric|digits:16',
+            'blood_type' => 'required',
+            'birth_date' => 'required',
         ]);
+
+        if($request->input('npwp')){
+            $request->validate([
+                'npwp' => 'regex:/^([\d]{2})[.]([\d]{3})[.]([\d]{3})[.][\d][-]([\d]{3})[.]([\d]{3})$/'
+            ]);
+            $input['npwp'] = $request->input('npwp');
+        }else{
+            $input['npwp'] = null;
+        }
 
         $input['TGL_MASUK'] = Carbon::createFromFormat('Y-m-d', $input['TGL_MASUK'])->format('Y-m-d');
         $result = DB::table('hr_staff_info')    
         ->where('FID', $input['FID'])
-        ->update($input);
+        ->update([
+            'Nama' => $input['Nama'],
+            'NIK' => $input['NIK'],
+            'DEPT_NAME' => $input['DEPT_NAME'],
+            'JABATAN' => $input['JABATAN'],
+            'TGL_MASUK' => Carbon::createFromFormat('Y-m-d', $input['TGL_MASUK'])->format('d/m/Y'),
+            'Notelp' => $input['Notelp'],
+        ]);
 
         DB::table('staff')
         ->where('id', $input['FID'])
@@ -191,6 +298,10 @@ class StaffController extends Controller
             'position' => $input['JABATAN'],
             'entry_date' => $request->input('TGL_MASUK'),
             'phone_number' => $input['Notelp'],
+            'birth_date' => $input['birth_date'],
+            'nik_ktp' => $input['nik_ktp'],
+            'npwp' => $input['npwp'],
+            'blood_type' => $input['blood_type'],
         ]);
         
         return response()->json([
@@ -297,7 +408,7 @@ class StaffController extends Controller
         $items = [];
         $headerSkipped = false;
 
-        foreach ($data as $row) {
+        foreach ($data as $index => $row) {
             if(!$headerSkipped) {
                 $headerSkipped = true;
                 continue;
@@ -361,6 +472,13 @@ class StaffController extends Controller
             $department = DB::table('hr_unit')
                 ->where('IdUnit', $unit)
                 ->first();
+            if($department == null) {
+                return response()->json([
+                    'status' => false,
+                    'message' => 'Data Staff gagal diimport, department '.$rowData[2].' tidak ditemukan pada data baris ke-'.$index,
+                    'data' => null
+                ], 422);
+            }
 
             $items[] = [
                 'name' => $rowData[0],
@@ -396,25 +514,83 @@ class StaffController extends Controller
         $input = $request->input('data');
 
         foreach($input as $row){
-            DB::table('hr_staff_info')->insert([
-                'Nama' => $row['name'],
-                'NIK' => $row['nik'],
-                'DEPT_NAME' => $row['id_unit'],
-                'JABATAN' => $row['position'],
-                'TGL_MASUK' => $row['entry_date'],
-                'Notelp' => $row['phone_number'],
-            ]);
+            if(strcasecmp(strtolower($row['position']), 'trainee') == 0){
+                DB::beginTransaction();
+                try{
+                    $fidCount = DB::table('fid_count as fc')
+                        ->first();
+                    
+                    $fidCount->trainee += 1;
+                    DB::table('fid_count')
+                        ->where('id', $fidCount->id)
+                        ->update(['trainee' => $fidCount->trainee]);
 
-            DB::table('staff')->insert([
-                'id' => DB::getPdo()->lastInsertId(),
-                'id_unit' => $row['id_unit'],
-                'name' => $row['name'],
-                'nik' => $row['nik'],
-                'position' => $row['position'],
-                'entry_date' => Carbon::createFromFormat('d/m/Y', $row['entry_date'])->format('Y-m-d'),
-                'phone_number' => $row['phone_number'],
-                'status' => 'Active'
-            ]);
+                    $date = Carbon::createFromFormat('d/m/Y', $row['entry_date']);
+                    DB::table('hr_staff_info')->insert([
+                        'FID' => $fidCount->trainee,
+                        'Nama' => $row['name'],
+                        'NIK' => $row['nik'],
+                        'DEPT_NAME' => $row['id_unit'],
+                        'JABATAN' => $row['position'],
+                        'TGL_MASUK' => $row['entry_date'],
+                        'Notelp' => $row['phone_number'],
+                    ]);
+        
+                    DB::table('staff')->insert([
+                        'id' => $fidCount->trainee,
+                        'id_unit' => $row['id_unit'],
+                        'name' => $row['name'],
+                        'nik' => $row['nik'],
+                        'position' => $row['position'],
+                        'entry_date' => Carbon::createFromFormat('d/m/Y', $row['entry_date'])->format('Y-m-d'),
+                        'phone_number' => $row['phone_number'],
+                        'status' => 'Active'
+                    ]);
+
+                    DB::commit();
+                } catch (\Exception $e) {
+                    DB::rollback();
+                    return response()->json(['error' => $e->getMessage()], 500);
+                }
+            }else{
+                DB::beginTransaction();
+                try{
+                    $fidCount = DB::table('fid_count as fc')
+                        ->first();
+                    
+                    $fidCount->staff += 1;
+                    DB::table('fid_count')
+                        ->where('id', $fidCount->id)
+                        ->update(['staff' => $fidCount->staff]);
+
+                    $date = Carbon::createFromFormat('d/m/Y', $row['entry_date']);
+                    DB::table('hr_staff_info')->insert([
+                        'FID' => $date->format('y').$date->format('m').$fidCount->staff,
+                        'Nama' => $row['name'],
+                        'NIK' => $row['nik'],
+                        'DEPT_NAME' => $row['id_unit'],
+                        'JABATAN' => $row['position'],
+                        'TGL_MASUK' => $row['entry_date'],
+                        'Notelp' => $row['phone_number'],
+                    ]);
+        
+                    DB::table('staff')->insert([
+                        'id' => $date->format('y').$date->format('m').$fidCount->staff,
+                        'id_unit' => $row['id_unit'],
+                        'name' => $row['name'],
+                        'nik' => $row['nik'],
+                        'position' => $row['position'],
+                        'entry_date' => Carbon::createFromFormat('d/m/Y', $row['entry_date'])->format('Y-m-d'),
+                        'phone_number' => $row['phone_number'],
+                        'status' => 'Active'
+                    ]);
+
+                    DB::commit();
+                } catch (\Exception $e) {
+                    DB::rollback();
+                    return response()->json(['error' => $e->getMessage()], 500);
+                }
+            }
         }
         return response()->json([
             'status' => true,

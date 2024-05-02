@@ -174,6 +174,10 @@ class ManagerOnDutyController extends Controller
         $user = DB::table('users')
             ->join('staff', 'users.id_staff', '=', 'staff.id')
             ->where('id_staff', '=', Auth::user()->id_staff)
+            ->where(function ($query) {
+                $query->whereNull('staff.status')
+                    ->orWhere('staff.status', 'Active');
+            })
             ->first();
         
             
@@ -181,6 +185,10 @@ class ManagerOnDutyController extends Controller
             ->leftJoin(DB::raw("(SELECT m.date, m.type, m.id, m.id_staff FROM manager_on_duty AS m WHERE DATE_FORMAT(m.date, '%Y-%m') = '$date') AS md"), 'si.id', '=', 'md.id_staff')
             ->select('si.id as id_staff', 'si.name', 'si.position', 'md.date', 'md.type', 'md.id')
             ->where('si.id_unit', $user->id_unit)
+            ->where(function ($query) {
+                $query->whereNull('si.status')
+                    ->orWhere('si.status', 'Active');
+            })
             ->orderBy('si.name', 'ASC')
             ->get();
 
@@ -202,6 +210,10 @@ class ManagerOnDutyController extends Controller
             ->where(function ($query) use ($date) {
                 $query->where(DB::raw("DATE_FORMAT(str_to_date(js.Tanggal, '%d/%m/%Y'), '%Y-%m')"), '=', $date);
             })
+            ->where(function ($query) {
+                $query->whereNull('si.status')
+                    ->orWhere('si.status', 'Active');
+            })
             ->get();
 
         $dp = DB::table('leave_request_dp as dp')
@@ -211,6 +223,10 @@ class ManagerOnDutyController extends Controller
             ->where('si.id_unit', '=', $user->id_unit)
             ->where(function ($query) use ($date) {
                 $query->where(DB::raw("DATE_FORMAT(dp.date, '%Y-%m')"), '=', $date);
+            })
+            ->where(function ($query) {
+                $query->whereNull('si.status')
+                    ->orWhere('si.status', 'Active');
             })
             ->where('dp.approval', '=', '2')
             ->get();
@@ -223,6 +239,10 @@ class ManagerOnDutyController extends Controller
             ->where(function ($query) use ($date) {
                 $query->where(DB::raw("DATE_FORMAT(eo.date, '%Y-%m')"), '=', $date);
             })
+            ->where(function ($query) {
+                $query->whereNull('si.status')
+                    ->orWhere('si.status', 'Active');
+            })
             ->where('lre.approval', '=', '2')
             ->get();
 
@@ -233,6 +253,10 @@ class ManagerOnDutyController extends Controller
             ->where('si.id_unit', '=', $user->id_unit)
             ->where(function ($query) use ($date) {
                 $query->where(DB::raw("DATE_FORMAT(lra.date, '%Y-%m')"), '=', $date);
+            })
+            ->where(function ($query) {
+                $query->whereNull('si.status')
+                    ->orWhere('si.status', 'Active');
             })
             ->where('lra.approval', '=', '2')
             ->get();

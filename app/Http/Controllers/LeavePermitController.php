@@ -2,6 +2,7 @@
 
 namespace App\Http\Controllers;
 
+use HeadlessChromium\BrowserFactory;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\DB;
@@ -337,69 +338,87 @@ class LeavePermitController extends Controller
     }
 
     public function indexEmployeeQuota () {
-        $dp = DB::table('manager_on_duty as md')
-            ->select('md.*')
-            ->distinct()
-            ->leftJoin('leave_request_dp as lrd', 'md.id', '=', 'lrd.id_mod')
-            ->where('md.id_staff', session('id_staff'))
+        $dp = DB::table('manager_on_duty AS md')
+            ->select([
+                'md.*',
+                'lrd.approval'
+            ])
+            ->leftJoin(DB::raw('(
+                SELECT 
+                    id_mod,
+                    MAX(id) AS latest_leave_request_id
+                FROM 
+                    leave_request_dp
+                GROUP BY 
+                    id_mod
+            ) AS latest_leave_request'), 'md.id', '=', 'latest_leave_request.id_mod')
+            ->leftJoin('leave_request_dp AS lrd', 'latest_leave_request.latest_leave_request_id', '=', 'lrd.id')
             ->where(function ($query) {
-                $query->whereNull('lrd.approval')
-                    ->orWhereNotIn('lrd.approval', [1, 2]);
-            })
-            ->whereNotExists(function ($subquery) {
-                $subquery->select(DB::raw(1))
-                    ->from('leave_request_dp as lrd_pending')
-                    ->whereRaw('lrd_pending.id_mod = md.id')
-                    ->where('lrd_pending.approval', 1);
-            })
-            ->where(function ($query) {
-                $query->where('md.expire', '>', now())
+                $query->where('md.expire', '>', DB::raw('NOW()'))
                     ->orWhereNull('md.expire');
             })
+            ->where(function ($query) {
+                $query->whereNull('lrd.approval')
+                    ->orWhere('lrd.approval', 0)
+                    ->orWhere('lrd.approval', 3);
+            })
+            ->where('md.id_staff', session('id_staff'))
             ->orderBy('md.date', 'ASC')
             ->get();
 
-        $eo = DB::table('extra_off as eo')
-        ->select('eo.*')
-        ->distinct()
-        ->leftJoin('leave_request_eo as lre', 'eo.id', '=', 'lre.id_eo')
-        ->where('eo.id_staff', '=', session('id_staff'))
+        $eo = DB::table('extra_off AS eo')
+        ->select([
+            'eo.*',
+            'lre.approval'
+        ])
+        ->leftJoin(DB::raw('(
+            SELECT 
+                id_eo,
+                MAX(id) AS latest_leave_request_id
+            FROM 
+                leave_request_eo
+            GROUP BY 
+                id_eo
+        ) AS latest_leave_request'), 'eo.id', '=', 'latest_leave_request.id_eo')
+        ->leftJoin('leave_request_eo AS lre', 'latest_leave_request.latest_leave_request_id', '=', 'lre.id')
         ->where(function ($query) {
-            $query->whereNull('lre.approval')
-                ->orWhereNotIn('lre.approval', [1, 2]);
-        })
-        ->whereNotExists(function ($subquery) {
-            $subquery->select(DB::raw(1))
-                ->from('leave_request_eo as lrd_pending')
-                ->whereRaw('lrd_pending.id_eo = eo.id')
-                ->where('lrd_pending.approval', 1);
-        })
-        ->where(function ($query) {
-            $query->where('eo.expire', '>', now())
+            $query->where('eo.expire', '>', DB::raw('NOW()'))
                 ->orWhereNull('eo.expire');
         })
+        ->where(function ($query) {
+            $query->whereNull('lre.approval')
+                ->orWhere('lre.approval', 0)
+                ->orWhere('lre.approval', 3);
+        })
+        ->where('eo.id_staff', session('id_staff'))
         ->orderBy('eo.date', 'ASC')
         ->get();
 
-        $al = DB::table('annual_leave as al')
-        ->select('al.*')
-        ->distinct()
-        ->leftJoin('leave_request_al as lra', 'al.id', '=', 'lra.id_al')
-        ->where('al.id_staff', '=', session('id_staff'))
+        $al = DB::table('annual_leave AS al')
+        ->select([
+            'al.*',
+            'lra.approval'
+        ])
+        ->leftJoin(DB::raw('(
+            SELECT 
+                id_al,
+                MAX(id) AS latest_leave_request_id
+            FROM 
+                leave_request_al
+            GROUP BY 
+                id_al
+        ) AS latest_leave_request'), 'al.id', '=', 'latest_leave_request.id_al')
+        ->leftJoin('leave_request_al AS lra', 'latest_leave_request.latest_leave_request_id', '=', 'lra.id')
         ->where(function ($query) {
-            $query->whereNull('lra.approval')
-                ->orWhereNotIn('lra.approval', [1, 2]);
-        })
-        ->whereNotExists(function ($subquery) {
-            $subquery->select(DB::raw(1))
-                ->from('leave_request_al as lra_pending')
-                ->whereRaw('lra_pending.id_al = al.id')
-                ->where('lra_pending.approval', 1);
-        })
-        ->where(function ($query) {
-            $query->where('al.expire', '>', now())
+            $query->where('al.expire', '>', DB::raw('NOW()'))
                 ->orWhereNull('al.expire');
         })
+        ->where(function ($query) {
+            $query->whereNull('lra.approval')
+                ->orWhere('lra.approval', 0)
+                ->orWhere('lra.approval', 3);
+        })
+        ->where('al.id_staff', session('id_staff'))
         ->orderBy('al.date', 'ASC')
         ->get();
         
@@ -1091,7 +1110,8 @@ class LeavePermitController extends Controller
         ->leftJoin(DB::raw('(SELECT users.id_staff, users.deleted_at, users.role FROM users WHERE users.deleted_at IS NULL) AS us'), function ($join) {
             $join->on('leave_request.id_staff', '=', 'us.id_staff');
         })
-        ->select('leave_request.*', 'us.*')
+        ->join('staff as si', 'si.id', '=', 'leave_request.id_staff')
+        ->select('leave_request.*', 'us.*', 'si.name')
         ->where('leave_request.id', $id)
         ->first();
 
@@ -1164,6 +1184,10 @@ class LeavePermitController extends Controller
     }
 
     public function cancel (Request $request, $id) {
+        $input = $request->validate([
+            'note' => 'required'
+        ]);
+
         $staffId = session('id_staff');
 
         $data = DB::table('leave_request as lr')
@@ -1194,7 +1218,8 @@ class LeavePermitController extends Controller
                 'id_user' => null,
                 'track' => 0,
                 'status' => 0,
-                'created_at' => now()
+                'created_at' => now(),
+                'note' => $input['note'],  
             ]);
 
         if($data){
@@ -1443,7 +1468,11 @@ class LeavePermitController extends Controller
         ], 404);
     }
 
-    public function reject ($id) {
+    public function reject (Request $request, $id) {
+        $input = $request->validate([
+            'note' => 'required'
+        ]);
+
         if(Auth::user()->role == 2){
             $track = 2;
         }else if(Auth::user()->role == 3){
@@ -1462,7 +1491,8 @@ class LeavePermitController extends Controller
                 'id_user' => Auth::user()->id,
                 'track' => $track,
                 'status' => 0,
-                'created_at' => now()
+                'created_at' => now(),
+                'note' => $input['note'],
             ]);
 
         $data = DB::table('leave_request as lr')
@@ -1488,7 +1518,7 @@ class LeavePermitController extends Controller
         ], 404);
     }
 
-    public function download(Request $request){
+    public function downloadView(Request $request){
         $id = $request->input('id');
         $ids = $request->input('ids');
 
@@ -1607,16 +1637,57 @@ class LeavePermitController extends Controller
         $quota['al']['validity'] = $alAll->count();
         $quota['al']['approval'] = $al->count();
         $quota['al']['balance'] = $leave->outstanding_al - $al->count();
-            
-        // return view('leave', ['data' =>$leave, 'dp' => $dp, 'eo' => $eo, 'al' => $al, 'staff' => $staff, 'id'=> $id, 'ids' => $ids, 'users' => $users, 'quota' => $quota]);
-        return Pdf::view('leave', ['data' =>$leave, 'dp' => $dp, 'eo' => $eo, 'al' => $al, 'staff' => $staff, 'id'=> $id, 'ids' => $ids, 'users' => $users, 'quota' => $quota])
-            ->format('a4')
-            ->margins(2, 2, 2, 2, Unit::Centimeter)
-            ->name('leave-'.now()->format('Y-m-d').'.pdf')
-            ->withBrowsershot(function (Browsershot $browsershot) {
-                $browsershot->scale(1)
-                    ->setChromePath('C:\Users\henry\.cache\puppeteer\chrome\win64-123.0.6312.122\chrome-win64\chrome.exe');
-            });
+        
+        return view('leave', ['data' =>$leave, 'dp' => $dp, 'eo' => $eo, 'al' => $al, 'staff' => $staff, 'id'=> $id, 'ids' => $ids, 'users' => $users, 'quota' => $quota]);
+    }
+
+    public function download(Request $request){
+        $id = $request->input('id');
+        $ids = $request->input('ids');
+        
+        $browser = (new BrowserFactory())->createBrowser([
+            'windowSize' => [1920, 1080],
+        ]);
+
+    try {
+
+        /* creates a new page and navigate to an URL */
+        $page = $browser->createPage();
+        $page->navigate(env('LINK')."/leave/view?id=".$id."&ids=".$ids)->waitForNavigation();
+        $pageTitle = $page->evaluate('document.title')->getReturnValue();
+
+        $options = [
+            'landscape'           => true,
+            'printBackground'     => false,
+            'marginTop'           => 0.0, 
+            'marginBottom'        => 0.0, 
+            'marginLeft'          => 0.0,
+            'marginRight'         => 0.0, 
+            'headerTemplate'      => '<div class="grid justify-center">
+            test
+            </div>
+        </div>',
+        ];
+
+        $name = public_path("uploads/".time().'.pdf');
+        $page->pdf($options)->saveToFile($name);
+
+        return response()->download($name);
+
+    } finally {
+
+        $browser->close();
+
+    }
+        
+        // return Pdf::view('leave', ['data' =>$leave, 'dp' => $dp, 'eo' => $eo, 'al' => $al, 'staff' => $staff, 'id'=> $id, 'ids' => $ids, 'users' => $users, 'quota' => $quota])
+        //     ->format('a4')
+        //     ->margins(2, 2, 2, 2, Unit::Centimeter)
+        //     ->name('leave-'.now()->format('Y-m-d').'.pdf')
+        //     ->withBrowsershot(function (Browsershot $browsershot) {
+        //         $browsershot->scale(1)
+        //             ->setChromePath('C:\Users\henry\.cache\puppeteer\chrome\win64-123.0.6312.122\chrome-win64\chrome.exe');
+        //     });
     }
 
     public function annualExpire () {

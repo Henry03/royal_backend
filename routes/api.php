@@ -144,6 +144,7 @@ Route::controller(OutOfDutyPermitController::class)->group( function() {
         Route::get('/user/outofduty/gm', 'indexByGm');
     });
     Route::get('/outofduty/download', [OutOfDutyPermitController::class, 'download']);
+    Route::get('/outofduty/view', [OutOfDutyPermitController::class, 'downloadView']);
 });
 
 Route::controller(OutOfDutyUserController::class)->group( function() {
@@ -262,6 +263,7 @@ Route::controller(LeavePermitController::class)->group(function() {
     });
 
     Route::get('/leave/download', 'download');
+    Route::get('/leave/view', 'downloadView');
 });
 
 Route::controller(unitController::class)->group( function() {

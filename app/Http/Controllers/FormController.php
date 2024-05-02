@@ -96,6 +96,10 @@ class FormController extends Controller
             ->selectRaw('SUM(CASE WHEN sd.status = 1 THEN 1 ELSE 0 END) AS checked')
             ->selectRaw('COUNT(*) AS total')
             ->where('sd.id_form', '=', $idForm)
+            ->where(function ($query) {
+                $query->where('sd.status', 0)
+                    ->orWhere('sd.status', 1);
+            })
             ->first();
 
         if($form->total == 0){
@@ -152,6 +156,10 @@ class FormController extends Controller
             ->selectRaw('SUM(CASE WHEN sd.status = 1 THEN 1 ELSE 0 END) AS checked')
             ->selectRaw('COUNT(*) AS total')
             ->where('sd.id_form', '=', $idForm)
+            ->where(function ($query) {
+                $query->where('sd.status', 0)
+                    ->orWhere('sd.status', 1);
+            })
             ->first();
 
         if($form->total == 0){
@@ -211,7 +219,7 @@ class FormController extends Controller
         
         $staff = DB::table('staff')
             ->join('hr_unit', 'hr_unit.IdUnit', '=', 'staff.id_unit')
-            ->select('staff.name', 'hr_unit.Namaunit as department', 'staff.position')
+            ->select('staff.name', 'hr_unit.Namaunit as department', 'staff.position', 'staff.birth_date', 'staff.nik_ktp', 'staff.npwp', 'staff.blood_type')
             ->where('id', session('id_staff'))
             ->first();
 
@@ -282,9 +290,9 @@ class FormController extends Controller
         }
         $staff = DB::table('staff')
             ->join('hr_unit', 'hr_unit.IdUnit', '=', 'staff.id_unit')
-            ->select('staff.name', 'hr_unit.Namaunit as department')
+            ->select('staff.name', 'hr_unit.Namaunit as department', 'staff.phone_number', 'staff.birth_date', 'staff.nik_ktp', 'staff.npwp', 'staff.blood_type')
             ->where('id', Auth::user()->id_staff)
-            ->first();
+            ->first();  
 
         $child = DB::table('child_data')
             ->where('id_staff_data', '=', $data->id)
@@ -460,7 +468,7 @@ class FormController extends Controller
             'id_form' => 'required',
             'birth_date' => 'required|date',
             'nik' => 'required|numeric|digits:16',
-            'npwp' => 'required|regex:/^[0][1-9][.]([\d]{3})[.]([\d]{3})[.][\d][-]([\d]{3})[.]([\d]{3})$/',
+            'npwp' => 'required|regex:/^([\d]{2})[.]([\d]{3})[.]([\d]{3})[.][\d][-]([\d]{3})[.]([\d]{3})$/',
             'ktp_address' => 'required',
             'address' => 'required',
             'blood_type' => 'required',
@@ -653,7 +661,7 @@ class FormController extends Controller
             'id_form' => 'required',
             'birth_date' => 'required|date',
             'nik' => 'required|numeric|digits:16',
-            'npwp' => 'required|regex:/^[0][1-9][.]([\d]{3})[.]([\d]{3})[.][\d][-]([\d]{3})[.]([\d]{3})$/',
+            'npwp' => 'required|regex:/^([\d]{2})[.]([\d]{3})[.]([\d]{3})[.][\d][-]([\d]{3})[.]([\d]{3})$/',
             'ktp_address' => 'required',
             'address' => 'required',
             'blood_type' => 'required',

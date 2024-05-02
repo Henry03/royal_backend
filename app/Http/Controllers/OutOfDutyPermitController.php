@@ -2,6 +2,7 @@
 
 namespace App\Http\Controllers;
 
+use HeadlessChromium\BrowserFactory;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Auth;
@@ -225,7 +226,10 @@ class OutOfDutyPermitController extends Controller
                              FROM users
                              WHERE deleted_at IS NULL) AS u'), 'u.id_staff', '=', 'si.id')
         ->where('si.id_unit', '=', Auth::user()->id_unit)
-        ->where('od.status', '=', 1)
+        ->where(function ($query) {
+            $query->where('od.status', '=', 1)
+                ->orWhere('od.status', '=', 0);
+        }) 
         ->where(function ($query) {
             $query->where('u.role', '!=', 4)
                   ->orWhereNull('u.role');
@@ -373,7 +377,8 @@ class OutOfDutyPermitController extends Controller
         ->leftJoin(DB::raw('(SELECT users.id_staff, users.deleted_at, users.role FROM users WHERE users.deleted_at IS NULL) AS us'), function ($join) {
             $join->on('out_of_duty.id_staff', '=', 'us.id_staff');
         })
-        ->select('out_of_duty.*','us.*')
+        ->join('staff as si', 'si.id', '=', 'out_of_duty.id_staff')
+        ->select('out_of_duty.*','us.*', 'si.name')
         ->where('out_of_duty.id', $id)
         ->first();
 
@@ -386,16 +391,17 @@ class OutOfDutyPermitController extends Controller
                     WHEN odu.track = 4 AND odu.status = 1 THEN 'Approved by HOD'
                     WHEN odu.track = 5 AND odu.status = 1 THEN 'Approved by GM'
                     WHEN odu.track = 6 AND odu.status = 1 THEN 'Acknowledge by HRD'
+                    WHEN odu.track = 0 AND odu.status = 0 THEN 'Canceled by Employee'
                     WHEN odu.track = 1 AND odu.status = 0 THEN 'Rejected by Admin'
                     WHEN odu.track = 2 AND odu.status = 0 THEN 'Rejected by Chief'
                     WHEN odu.track = 3 AND odu.status = 0 THEN 'Rejected Asst. HOD'
                     WHEN odu.track = 4 AND odu.status = 0 THEN 'Rejected by HOD'
                     WHEN odu.track = 5 AND odu.status = 0 THEN 'Rejected by GM'
                     WHEN odu.track = 6 AND odu.status = 0 THEN 'Rejected by HRD'
-                END as approval_status"), 'u.role', 'odu.track', 'odu.status', 'si.name', 'odu.created_at')
+                END as approval_status"), 'u.role', 'odu.track', 'odu.status', 'si.name', 'odu.created_at', 'odu.note')
             ->join('out_of_duty_update as odu', 'od.id', '=', 'odu.id_out_of_duty')
-            ->join('users as u', 'u.id', '=', 'odu.id_user')
-            ->join('staff AS si', 'si.id', '=', 'u.id_staff')
+            ->leftJoin('users as u', 'u.id', '=', 'odu.id_user')
+            ->leftJoin('staff AS si', 'si.id', '=', 'u.id_staff')
             ->where('od.id', $id)
             ->get();
 
@@ -407,12 +413,26 @@ class OutOfDutyPermitController extends Controller
         ], 200);
     }
 
-    public function employeeCancel ($id) {
+    public function employeeCancel (Request $request, $id) {
+        $input = $request->validate([
+            'note' => 'required'
+        ]);
+
         $data = DB::table('out_of_duty')
         ->where('id_staff', session('id_staff'))
         ->where('id', $id)
         ->where('status', 1)
         ->update(['status' => 0]);
+
+        DB::table('out_of_duty_update')
+            ->insert([
+                'id_out_of_duty' => $id,
+                'id_user' => null,
+                'track' => 0,
+                'status' => 0,
+                'created_at' => now(),
+                'note' => $input['note'],   
+            ]);
 
         if($data){
             return response()->json([
@@ -470,17 +490,33 @@ class OutOfDutyPermitController extends Controller
         ], 200);
     }
 
-    public function reject ($id) {
+    public function reject (Request $request, $id) {
+        $input = $request->validate([
+            'note' => 'required'
+        ]);
+
         if(Auth::user()->role == 2){
             $track = 2;
         }else if(Auth::user()->role == 3){
             $track = 3;
         }else if(Auth::user()->role == 4){
             $track = 4;
+        }else if(Auth::user()->role == 5){
+            $track = 5;
         }
         $data = DB::table('out_of_duty')
         ->where('id', $id)
         ->update(['status' => 0, 'track' => $track]);
+
+        DB::table('out_of_duty_update')
+            ->insert([
+                'id_out_of_duty' => $id,
+                'id_user' => Auth::user()->id,
+                'track' => $track,
+                'status' => 0,
+                'created_at' => now(),
+                'note' => $input['note'],   
+            ]);
 
         if($data){
             return response()->json([
@@ -497,7 +533,7 @@ class OutOfDutyPermitController extends Controller
         ], 200);
     }
 
-    public function download (Request $request) {
+    public function downloadView(Request $request) {
         $id = $request->input('id');
         $ids = $request->input('ids');
 
@@ -524,13 +560,59 @@ class OutOfDutyPermitController extends Controller
         for($i = 0; $i < count($user); $i++){
             $user[$i]->name = mb_convert_case($user[$i]->name, MB_CASE_TITLE, 'UTF-8');
         }
+        return view('outofduty', ['data' => $data, 'users' => $user]);
+    }
 
-        return Pdf::view('outofduty', ['data' => $data, 'users' => $user])
-            ->format('a4')
-            ->name('out_of_duty-'.now()->format('Y-m-d').'.pdf')
-            ->withBrowsershot(function (Browsershot $browsershot) {
-                $browsershot->scale(1)
-                    ->setChromePath('C:\Users\henry\.cache\puppeteer\chrome\win64-123.0.6312.122\chrome-win64\chrome.exe');
-            });;
+    public function download (Request $request) {
+        $id = $request->input('id');
+        $ids = $request->input('ids');
+
+        // return Pdf::view('outofduty', ['data' => $data, 'users' => $user])
+        //     ->format('a4')
+        //     ->name('out_of_duty-'.now()->format('Y-m-d').'.pdf')
+        //     ->withBrowsershot(function (Browsershot $browsershot) {
+        //         $browsershot->scale(1)
+        //             ->setChromePath('C:\Users\henry\.cache\puppeteer\chrome\win64-123.0.6312.122\chrome-win64\chrome.exe');
+        //     });;
+
+        
+
+        $browser = (new BrowserFactory())->createBrowser([
+                'windowSize' => [1920, 1080],
+            ]);
+
+        try {
+
+            /* creates a new page and navigate to an URL */
+            $page = $browser->createPage();
+            $page->navigate(env('LINK')."/outofduty/view?id=".$id."&ids=".$ids)->waitForNavigation();
+            $pageTitle = $page->evaluate('document.title')->getReturnValue();
+
+            $options = [
+                'landscape'           => true,
+                'printBackground'     => false,
+                'marginTop'           => 0.0, 
+                'marginBottom'        => 0.0, 
+                'marginLeft'          => 0.0,
+                'marginRight'         => 0.0, 
+                'headerTemplate'      => '<div class="grid justify-center">
+                <div class="w-fit">
+                {!! QrCode::size(128)->merge("/public/storage/Logo.png")
+                    ->generate("http://192.168.77.209/royal_backend/public/outofduty/download?id={$data->id}&ids={$data->id_staff}") 
+                !!}
+                </div>
+            </div>',
+            ];
+
+            $name = public_path("uploads/".time().'.pdf');
+            $page->pdf($options)->saveToFile($name);
+
+            return response()->download($name);
+
+        } finally {
+
+            $browser->close();
+
+        }
     }
 }

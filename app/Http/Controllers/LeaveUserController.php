@@ -36,71 +36,90 @@ class LeaveUserController extends Controller
     }
 
     public function indexByEmployeeQuota () {
-        $dp = DB::table('manager_on_duty as md')
-            ->select('md.*')
-            ->distinct()
-            ->leftJoin('leave_request_dp as lrd', 'md.id', '=', 'lrd.id_mod')
-            ->where('md.id_staff', Auth::user()->id_staff)
+        $dp = DB::table('manager_on_duty AS md')
+            ->select([
+                'md.*',
+                'lrd.approval'
+            ])
+            ->leftJoin(DB::raw('(
+                SELECT 
+                    id_mod,
+                    MAX(id) AS latest_leave_request_id
+                FROM 
+                    leave_request_dp
+                GROUP BY 
+                    id_mod
+            ) AS latest_leave_request'), 'md.id', '=', 'latest_leave_request.id_mod')
+            ->leftJoin('leave_request_dp AS lrd', 'latest_leave_request.latest_leave_request_id', '=', 'lrd.id')
             ->where(function ($query) {
-                $query->whereNull('lrd.approval')
-                    ->orWhereNotIn('lrd.approval', [1, 2]);
-            })
-            ->whereNotExists(function ($subquery) {
-                $subquery->select(DB::raw(1))
-                    ->from('leave_request_dp as lrd_pending')
-                    ->whereRaw('lrd_pending.id_mod = md.id')
-                    ->where('lrd_pending.approval', 1);
-            })
-            ->where(function ($query) {
-                $query->where('md.expire', '>', now())
+                $query->where('md.expire', '>', DB::raw('NOW()'))
                     ->orWhereNull('md.expire');
             })
+            ->where(function ($query) {
+                $query->whereNull('lrd.approval')
+                    ->orWhere('lrd.approval', 0)
+                    ->orWhere('lrd.approval', 3);
+            })
+            ->where('md.id_staff', Auth::user()->id_staff)
             ->orderBy('md.date', 'ASC')
             ->get();
 
-        $eo = DB::table('extra_off as eo')
-        ->select('eo.*')
-        ->distinct()
-        ->leftJoin('leave_request_eo as lre', 'eo.id', '=', 'lre.id_eo')
-        ->where('eo.id_staff', '=', Auth::user()->id_staff)
+        $eo = DB::table('extra_off AS eo')
+        ->select([
+            'eo.*',
+            'lre.approval'
+        ])
+        ->leftJoin(DB::raw('(
+            SELECT 
+                id_eo,
+                MAX(id) AS latest_leave_request_id
+            FROM 
+                leave_request_eo
+            GROUP BY 
+                id_eo
+        ) AS latest_leave_request'), 'eo.id', '=', 'latest_leave_request.id_eo')
+        ->leftJoin('leave_request_eo AS lre', 'latest_leave_request.latest_leave_request_id', '=', 'lre.id')
         ->where(function ($query) {
-            $query->whereNull('lre.approval')
-                ->orWhereNotIn('lre.approval', [1, 2]);
-        })
-        ->whereNotExists(function ($subquery) {
-            $subquery->select(DB::raw(1))
-                ->from('leave_request_eo as lrd_pending')
-                ->whereRaw('lrd_pending.id_eo = eo.id')
-                ->where('lrd_pending.approval', 1);
-        })
-        ->where(function ($query) {
-            $query->where('eo.expire', '>', now())
+            $query->where('eo.expire', '>', DB::raw('NOW()'))
                 ->orWhereNull('eo.expire');
         })
+        ->where(function ($query) {
+            $query->whereNull('lre.approval')
+                ->orWhere('lre.approval', 0)
+                ->orWhere('lre.approval', 3);
+        })
+        ->where('eo.id_staff', Auth::user()->id_staff)
         ->orderBy('eo.date', 'ASC')
         ->get();
 
-        $al = DB::table('annual_leave as al')
-        ->select('al.*')
-        ->distinct()
-        ->leftJoin('leave_request_al as lra', 'al.id', '=', 'lra.id_al')
-        ->where('al.id_staff', '=', Auth::user()->id_staff)
+        $al = DB::table('annual_leave AS al')
+        ->select([
+            'al.*',
+            'lra.approval'
+        ])
+        ->leftJoin(DB::raw('(
+            SELECT 
+                id_al,
+                MAX(id) AS latest_leave_request_id
+            FROM 
+                leave_request_al
+            GROUP BY 
+                id_al
+        ) AS latest_leave_request'), 'al.id', '=', 'latest_leave_request.id_al')
+        ->leftJoin('leave_request_al AS lra', 'latest_leave_request.latest_leave_request_id', '=', 'lra.id')
         ->where(function ($query) {
-            $query->whereNull('lra.approval')
-                ->orWhereNotIn('lra.approval', [1, 2]);
-        })
-        ->whereNotExists(function ($subquery) {
-            $subquery->select(DB::raw(1))
-                ->from('leave_request_al as lra_pending')
-                ->whereRaw('lra_pending.id_al = al.id')
-                ->where('lra_pending.approval', 1);
-        })
-        ->where(function ($query) {
-            $query->where('al.expire', '>', now())
+            $query->where('al.expire', '>', DB::raw('NOW()'))
                 ->orWhereNull('al.expire');
         })
+        ->where(function ($query) {
+            $query->whereNull('lra.approval')
+                ->orWhere('lra.approval', 0)
+                ->orWhere('lra.approval', 3);
+        })
+        ->where('al.id_staff', Auth::user()->id_staff)
         ->orderBy('al.date', 'ASC')
         ->get();
+        
         
         
         return response()->json([
@@ -118,7 +137,8 @@ class LeaveUserController extends Controller
             ->leftJoin(DB::raw('(SELECT users.id_staff, users.deleted_at FROM users WHERE users.deleted_at IS NULL) AS us'), function ($join) {
                 $join->on('leave_request.id_staff', '=', 'us.id_staff');
             })
-            ->select('leave_request.*', 'us.*')
+            ->join('staff as si', 'si.id', '=', 'leave_request.id_staff')
+            ->select('leave_request.*', 'us.*', 'si.name')
             ->where('leave_request.id', $id)
             ->first();
 
@@ -131,6 +151,7 @@ class LeaveUserController extends Controller
                     WHEN lru.track = 4 AND lru.status = 1 THEN 'Approved by HOD'
                     WHEN lru.track = 5 AND lru.status = 1 THEN 'Approved by GM'
                     WHEN lru.track = 6 AND lru.status = 1 THEN 'Acknowledge by HRD'
+                    WHEN lru.track = 0 AND lru.status = 0 THEN 'Canceled by Employee'
                     WHEN lru.track = 1 AND lru.status = 0 THEN 'Rejected by Admin'
                     WHEN lru.track = 2 AND lru.status = 0 THEN 'Rejected by Chief'
                     WHEN lru.track = 3 AND lru.status = 0 THEN 'Rejected Asst. HOD'
@@ -139,8 +160,8 @@ class LeaveUserController extends Controller
                     WHEN lru.track = 6 AND lru.status = 0 THEN 'Rejected by HRD'
                 END as approval_status"), 'u.role', 'lru.track', 'lru.status', 'si.name', 'lru.created_at', 'lru.note')
             ->join('leave_request_update as lru', 'lr.id', '=', 'lru.id_leave_request')
-            ->join('users as u', 'u.id', '=', 'lru.id_user')
-            ->join('staff AS si', 'si.id', '=', 'u.id_staff')
+            ->leftJoin('users as u', 'u.id', '=', 'lru.id_user')
+            ->leftJoin('staff AS si', 'si.id', '=', 'u.id_staff')
             ->where('lr.id', $id)
             ->get();
 
@@ -184,7 +205,11 @@ class LeaveUserController extends Controller
         }
     }
 
-    public function cancel ($id) {
+    public function cancel (Request $request, $id) {
+        $input = $request->validate([
+            'note' => 'required'
+        ]);
+
         $staffId = Auth::user()->id_staff;
         $data = DB::table('leave_request as lr')
         ->leftJoin('leave_request_dp as lrd', 'lrd.id_leave_request', '=', 'lr.id')
@@ -202,6 +227,16 @@ class LeaveUserController extends Controller
         })
         ->select('lr.*', 'lrd.*', 'lre.*', 'lra.*', 'md.*', 'eo.*', 'al.*')
         ->update(['lr.status' => 0, 'lre.approval' => 0, 'lrd.approval' => 0, 'lra.approval' => 0]);
+
+        DB::table('leave_request_update')
+            ->insert([
+                'id_leave_request' => $id,
+                'id_user' => null,
+                'track' => 0,
+                'status' => 0,
+                'created_at' => now(),
+                'note' => $input['note'],  
+            ]);
 
         if($data){
             return response()->json([

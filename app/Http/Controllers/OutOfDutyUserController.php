@@ -50,7 +50,8 @@ class OutOfDutyUserController extends Controller
         ->leftJoin(DB::raw('(SELECT users.id_staff, users.deleted_at FROM users WHERE users.deleted_at IS NULL) AS us'), function ($join) {
             $join->on('out_of_duty.id_staff', '=', 'us.id_staff');
         })
-        ->select('out_of_duty.*', 'us.*')
+        ->join('staff as si', 'si.id', '=', 'out_of_duty.id_staff')
+        ->select('out_of_duty.*', 'us.*', 'si.name')
         ->where('out_of_duty.id', $id)
         ->first();
 
@@ -63,16 +64,17 @@ class OutOfDutyUserController extends Controller
                     WHEN odu.track = 4 AND odu.status = 1 THEN 'Approved by HOD'
                     WHEN odu.track = 5 AND odu.status = 1 THEN 'Approved by GM'
                     WHEN odu.track = 6 AND odu.status = 1 THEN 'Acknowledge by HRD'
+                    WHEN odu.track = 0 AND odu.status = 0 THEN 'Canceled by Employee'
                     WHEN odu.track = 1 AND odu.status = 0 THEN 'Rejected by Admin'
                     WHEN odu.track = 2 AND odu.status = 0 THEN 'Rejected by Chief'
                     WHEN odu.track = 3 AND odu.status = 0 THEN 'Rejected Asst. HOD'
                     WHEN odu.track = 4 AND odu.status = 0 THEN 'Rejected by HOD'
                     WHEN odu.track = 5 AND odu.status = 0 THEN 'Rejected by GM'
                     WHEN odu.track = 6 AND odu.status = 0 THEN 'Rejected by HRD'
-                END as approval_status"), 'u.role', 'odu.track', 'odu.status', 'si.name', 'odu.created_at')
+                END as approval_status"), 'u.role', 'odu.track', 'odu.status', 'si.name', 'odu.created_at', 'odu.note')
             ->join('out_of_duty_update as odu', 'od.id', '=', 'odu.id_out_of_duty')
-            ->join('users as u', 'u.id', '=', 'odu.id_user')
-            ->join('staff AS si', 'si.id', '=', 'u.id_staff')
+            ->leftJoin('users as u', 'u.id', '=', 'odu.id_user')
+            ->leftJoin('staff AS si', 'si.id', '=', 'u.id_staff')
             ->where('od.id', $id)
             ->get();
 
@@ -84,12 +86,26 @@ class OutOfDutyUserController extends Controller
         ], 200);
     }
 
-    public function cancel ($id) {
+    public function cancel (Request $request, $id) {
+        $input = $request->validate([
+            'note' => 'required'
+        ]);
+
         $data = DB::table('out_of_duty')
         ->where('id_staff', Auth::user()->id_staff)
         ->where('id', $id)
         ->where('status', 1)
         ->update(['status' => 0]);
+
+        DB::table('out_of_duty_update')
+            ->insert([
+                'id_out_of_duty' => $id,
+                'id_user' => null,
+                'track' => 0,
+                'status' => 0,
+                'created_at' => now(),
+                'note' => $input['note'],  
+            ]);
 
         if($data){
             return response()->json([

@@ -122,6 +122,14 @@ class LoginController extends Controller
         ->select('*')
         ->where('token', $input['token'])
         ->first();
+        
+        if(!$data){
+            return response()->json([
+                'success' => false,
+                'message' => 'Token is invalid',
+                'data' => null
+            ], 401);
+        }
 
         if($data->exp_date < now()){
             DB::table('login_access')
@@ -132,16 +140,10 @@ class LoginController extends Controller
                 'success' => false,
                 'message' => 'Token is expired',
                 'data' => null
-            ], 422);
+            ], 401);
         }
 
-        if(!$data){
-            return response()->json([
-                'success' => false,
-                'message' => 'Token is invalid',
-                'data' => null
-            ], 422);
-        }
+
 
         $position = DB::table('hr_staff_info')
         ->select('*')
