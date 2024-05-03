@@ -32,5 +32,8 @@ class StorageController extends Controller
         return response()->download(public_path('storage\extra_off_import_template.csv'), 'extra_off_import_template.csv');
     }
 
-    
+    public function logo(){
+        $filePath = public_path('storage\logo.jpg');
+        return response()->file($filePath);
+    }
 }

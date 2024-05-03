@@ -233,6 +233,8 @@ Route::controller(LeavePermitController::class)->group(function() {
         Route::put('/user/leavepermit/reject/dp/{id}', 'rejectDp');
         Route::put('/user/leavepermit/reject/eo/{id}', 'rejectEo');
         Route::put('/user/leavepermit/reject/al/{id}', 'rejectAl');
+        
+        Route::get('/leavepermit/count/quota/user', 'countEmployeeUserQuota');
         Route::post('/user/leavepermit/department/approved', 'indexbyDepartmentApproved');
     });
     Route::middleware(['auth:sanctum', 'ability:5'])->group(function () {
@@ -283,6 +285,7 @@ Route::controller(StorageController::class)->group( function() {
     Route::get('/download/staff/template', 'downloadStaffTemplate');
     Route::get('/download/annualleave/template', 'downloadAnnualLeaveTemplate');
     Route::get('/download/extraoff/template', 'downloadExtraOffTemplate');
+    Route::get('/show/logo', 'logo');
     // Route::post('/attendance', 'indexAll');
 });
 

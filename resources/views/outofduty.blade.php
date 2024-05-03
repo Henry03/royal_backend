@@ -7,7 +7,6 @@
     <meta http-equiv="X-UA-Compatible" content="ie=edge">
     <title>Out of Duty</title>
     <style>
-
         .text-center {
             text-align: center;
         }
@@ -135,7 +134,7 @@
 </head>
 <body>
     <div class="text-center m-16">
-        <img class="w-20 mx-auto" src="data:image/png;base64,{{ base64_encode(file_get_contents( 'http://192.168.77.209/royal_frontend/api/public/storage/logo.jpg' )) }}">
+        <img class="w-20 mx-auto" src="data:image/png;base64,{{ base64_encode(file_get_contents( 'http://192.168.77.209/royal_frontend/api/public/api/show/logo' )) }}">
         <h2 class="text-xl text-center font-bold mb-5">Out of Duty Permit</h1>
         <table class="text-left">
             <tbody>

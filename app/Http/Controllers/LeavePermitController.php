@@ -2,6 +2,7 @@
 
 namespace App\Http\Controllers;
 
+use Dompdf\Dompdf;
 use HeadlessChromium\BrowserFactory;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
@@ -433,36 +434,31 @@ class LeavePermitController extends Controller
     }
 
     public function countEmployeeQuota () {
-        $dp = DB::table(function($subquery) {
-                $subquery->select(
-                        DB::raw('SUM(CASE WHEN (md.expire > NOW() OR md.expire IS NULL) AND (lrd.approval IS NULL OR lrd.approval IN (0,3)) THEN 1 ELSE 0 END) AS quota'),
-                        DB::raw('SUM(CASE WHEN lrd.approval = 2 THEN 1 ELSE 0 END) AS used'),
-                        DB::raw('SUM(CASE WHEN md.expire < NOW() AND (lrd.approval NOT IN (1,2) OR lrd.approval IS null) THEN 1 ELSE 0 END) AS expired'),
-                        DB::raw('SUM(CASE WHEN lrd.approval = 1 THEN 1 ELSE 0 END) AS pending'),
-                        DB::raw('COUNT(DISTINCT md.id) AS total')
-                    )
-                    ->from('manager_on_duty AS md')
-                    ->leftJoin(DB::raw('(SELECT 
-                                            id_mod, 
-                                            approval
-                                        FROM 
-                                            leave_request_dp
-                                        GROUP BY 
-                                            id_mod, approval) AS lrd'), 'md.id', '=', 'lrd.id_mod')
-                    ->where('md.id_staff', session('id_staff'))
-                    ->where(function ($query) {
-                        $query->whereRaw('md.expire > DATE_FORMAT(NOW(), "%Y-%m-01")')
-                            ->orWhereNull('md.expire');
-                    })
-                    ->groupBy('md.id');
-            }, 'quota')
-            ->select(
-                DB::raw('SUM(CASE WHEN quota.quota > 0 THEN 1 ELSE 0 END) as quota'),
-                DB::raw('SUM(CASE WHEN quota.used > 0 THEN 1 ELSE 0 END) as used'),
-                DB::raw('SUM(CASE WHEN quota.pending > 0 THEN 1 ELSE 0 END) as pending'),
-                DB::raw('SUM(CASE WHEN quota.expired > 0 THEN 1 ELSE 0 END) as expired'),
-                DB::raw('SUM(CASE WHEN quota.total > 0 THEN 1 ELSE 0 END) as total')
-            )
+        $dp = DB::table('hr_staff_info AS si')
+            ->select([
+                DB::raw('SUM(CASE WHEN lrd.approval = 2 THEN 1 ELSE 0 END) AS used'),
+                DB::raw('SUM(CASE WHEN lrd.approval = 1 THEN 1 ELSE 0 END) AS pending'),
+                DB::raw('COUNT(md.id) - SUM(CASE WHEN lrd.approval = 2 THEN 1 ELSE 0 END) - SUM(CASE WHEN lrd.approval = 1 THEN 1 ELSE 0 END) AS quota'),
+                DB::raw('COUNT(md.id) AS total')
+            ])
+            ->leftJoin('manager_on_duty AS md', 'si.FID', '=', 'md.id_staff')
+            ->leftJoin(DB::raw('(
+                SELECT 
+                    id_mod,
+                    MAX(id) AS latest_leave_request_id
+                FROM 
+                    leave_request_dp
+                GROUP BY 
+                    id_mod
+            ) AS latest_leave_request'), 'md.id', '=', 'latest_leave_request.id_mod')
+            ->leftJoin('leave_request_dp AS lrd', 'latest_leave_request.latest_leave_request_id', '=', 'lrd.id')
+            ->where(function ($query) {
+                $query->where('md.expire', '>', DB::raw('NOW()'))
+                    ->orWhereNull('md.expire');
+            })
+            ->where('si.Fid', session('id_staff'))
+            ->groupBy('si.FID', 'si.Nama')
+            ->orderBy('si.Nama', 'ASC')
             ->first();
 
         $dpBalance = [];
@@ -486,43 +482,32 @@ class LeavePermitController extends Controller
                 'value' => $dp->pending,
                 'color' => 'hsl(54, 70%, 50%)'
             ];
-            $dpBalance[] = [
-                'id' => 'expired',
-                'label' => 'Expired',
-                'value' => $dp->expired,
-                'color' => 'hsl(15, 70%, 50%)'
-            ];
         }
-        $eo = DB::table(function($subquery) {
-                $subquery->select(
-                        DB::raw('SUM(CASE WHEN (eo.expire > NOW() OR eo.expire IS NULL) AND (lre.approval IS NULL OR lre.approval IN (0,3)) THEN 1 ELSE 0 END) AS quota'),
-                        DB::raw('SUM(CASE WHEN lre.approval = 2 THEN 1 ELSE 0 END) AS used'),
-                        DB::raw('SUM(CASE WHEN eo.expire < NOW() AND (lre.approval NOT IN (1,2) OR lre.approval IS null) THEN 1 ELSE 0 END) AS expired'),
-                        DB::raw('SUM(CASE WHEN lre.approval = 1 THEN 1 ELSE 0 END) AS pending'),
-                        DB::raw('COUNT(DISTINCT eo.id) AS total')
-                    )
-                    ->from('extra_off AS eo')
-                    ->leftJoin(DB::raw('(SELECT 
-                                            id_eo, 
-                                            approval
-                                        FROM 
-                                            leave_request_eo
-                                        GROUP BY 
-                                            id_eo, approval) AS lre'), 'eo.id', '=', 'lre.id_eo')
-                    ->where('eo.id_staff', session('id_staff'))
-                    ->where(function ($query) {
-                        $query->whereRaw('eo.expire > DATE_FORMAT(NOW(), "%Y-%m-01")')
-                            ->orWhereNull('eo.expire');
-                    })
-                    ->groupBy('eo.id');
-            }, 'quota')
-            ->select(
-                DB::raw('SUM(CASE WHEN quota.quota > 0 THEN 1 ELSE 0 END) as quota'),
-                DB::raw('SUM(CASE WHEN quota.used > 0 THEN 1 ELSE 0 END) as used'),
-                DB::raw('SUM(CASE WHEN quota.pending > 0 THEN 1 ELSE 0 END) as pending'),
-                DB::raw('SUM(CASE WHEN quota.expired > 0 THEN 1 ELSE 0 END) as expired'),
-                DB::raw('SUM(CASE WHEN quota.total > 0 THEN 1 ELSE 0 END) as total')
-            )
+        $eo = DB::table('hr_staff_info AS si')
+            ->select([
+                DB::raw('SUM(CASE WHEN lre.approval = 2 THEN 1 ELSE 0 END) AS used'),
+                DB::raw('SUM(CASE WHEN lre.approval = 1 THEN 1 ELSE 0 END) AS pending'),
+                DB::raw('COUNT(eo.id) - SUM(CASE WHEN lre.approval = 2 THEN 1 ELSE 0 END) - SUM(CASE WHEN lre.approval = 1 THEN 1 ELSE 0 END) AS quota'),
+                DB::raw('COUNT(eo.id) AS total')
+            ])
+            ->leftJoin('extra_off AS eo', 'si.FID', '=', 'eo.id_staff')
+            ->leftJoin(DB::raw('(
+                SELECT 
+                    id_eo,
+                    MAX(id) AS latest_leave_request_id
+                FROM 
+                    leave_request_eo
+                GROUP BY 
+                    id_eo
+            ) AS latest_leave_request'), 'eo.id', '=', 'latest_leave_request.id_eo')
+            ->leftJoin('leave_request_eo AS lre', 'latest_leave_request.latest_leave_request_id', '=', 'lre.id')
+            ->where(function ($query) {
+                $query->where('eo.expire', '>', DB::raw('NOW()'))
+                    ->orWhereNull('eo.expire');
+            })
+            ->where('si.Fid', session('id_staff'))
+            ->groupBy('si.FID', 'si.Nama')
+            ->orderBy('si.Nama', 'ASC')
             ->first();
 
         $eoBalance = [];
@@ -546,43 +531,32 @@ class LeavePermitController extends Controller
                 'value' => $eo->pending,
                 'color' => 'hsl(54, 70%, 50%)'
             ];
-            $eoBalance[] = [
-                'id' => 'expired',
-                'label' => 'Expired',
-                'value' => $eo->expired,
-                'color' => 'hsl(15, 70%, 50%)'
-            ];
         }
-        $al = DB::table(function($subquery) {
-                $subquery->select(
-                        DB::raw('SUM(CASE WHEN (al.expire > NOW() OR al.expire IS NULL) AND (lra.approval IS NULL OR lra.approval IN (0,3)) THEN 1 ELSE 0 END) AS quota'),
-                        DB::raw('SUM(CASE WHEN lra.approval = 2 THEN 1 ELSE 0 END) AS used'),
-                        DB::raw('SUM(CASE WHEN al.expire < NOW() AND (lra.approval NOT IN (1,2) OR lra.approval IS null) THEN 1 ELSE 0 END) AS expired'),
-                        DB::raw('SUM(CASE WHEN lra.approval = 1 THEN 1 ELSE 0 END) AS pending'),
-                        DB::raw('COUNT(DISTINCT al.id) AS total')
-                    )
-                    ->from('annual_leave as al')
-                    ->leftJoin(DB::raw('(SELECT 
-                                            id_al, 
-                                            approval
-                                        FROM 
-                                            leave_request_al
-                                        GROUP BY 
-                                            id_al, approval) AS lra'), 'al.id', '=', 'lra.id_al')
-                    ->where('al.id_staff', session('id_staff'))
-                    ->where(function ($query) {
-                        $query->whereRaw('al.expire > DATE_FORMAT(NOW(), "%Y-%m-01")')
-                            ->orWhereNull('al.expire');
-                    })
-                    ->groupBy('al.id');
-            }, 'quota')
-            ->select(
-                DB::raw('SUM(CASE WHEN quota.quota > 0 THEN 1 ELSE 0 END) as quota'),
-                DB::raw('SUM(CASE WHEN quota.used > 0 THEN 1 ELSE 0 END) as used'),
-                DB::raw('SUM(CASE WHEN quota.pending > 0 THEN 1 ELSE 0 END) as pending'),
-                DB::raw('SUM(CASE WHEN quota.expired > 0 THEN 1 ELSE 0 END) as expired'),
-                DB::raw('SUM(CASE WHEN quota.total > 0 THEN 1 ELSE 0 END) as total')
-            )
+        $al = DB::table('hr_staff_info AS si')
+            ->select([
+                DB::raw('SUM(CASE WHEN lra.approval = 2 THEN 1 ELSE 0 END) AS used'),
+                DB::raw('SUM(CASE WHEN lra.approval = 1 THEN 1 ELSE 0 END) AS pending'),
+                DB::raw('COUNT(al.id) - SUM(CASE WHEN lra.approval = 2 THEN 1 ELSE 0 END) - SUM(CASE WHEN lra.approval = 1 THEN 1 ELSE 0 END) AS quota'),
+                DB::raw('COUNT(al.id) AS total')
+            ])
+            ->leftJoin('annual_leave as al', 'si.FID', '=', 'al.id_staff')
+            ->leftJoin(DB::raw('(
+                SELECT 
+                    id_al,
+                    MAX(id) AS latest_leave_request_id
+                FROM 
+                    leave_request_al
+                GROUP BY 
+                    id_al
+            ) AS latest_leave_request'), 'al.id', '=', 'latest_leave_request.id_al')
+            ->leftJoin('leave_request_al AS lra', 'latest_leave_request.latest_leave_request_id', '=', 'lra.id')
+            ->where(function ($query) {
+                $query->where('al.expire', '>', DB::raw('NOW()'))
+                    ->orWhereNull('al.expire');
+            })
+            ->where('si.Fid', session('id_staff'))
+            ->groupBy('si.FID', 'si.Nama')
+            ->orderBy('si.Nama', 'ASC')
             ->first();
 
         $alBalance = [];
@@ -605,11 +579,161 @@ class LeavePermitController extends Controller
                 'value' => $al->pending,
                 'color' => 'hsl(54, 70%, 50%)'
             ];
+        }
+
+        return response()->json([
+            'status' => true,
+            'message' => 'Leave Balance',
+            'dp' => $dpBalance,
+            'eo' => $eoBalance,
+            'al' => $alBalance
+        ], 200);
+    }
+    public function countEmployeeUserQuota () {
+        $dp = DB::table('hr_staff_info AS si')
+            ->select([
+                DB::raw('SUM(CASE WHEN lrd.approval = 2 THEN 1 ELSE 0 END) AS used'),
+                DB::raw('SUM(CASE WHEN lrd.approval = 1 THEN 1 ELSE 0 END) AS pending'),
+                DB::raw('COUNT(md.id) - SUM(CASE WHEN lrd.approval = 2 THEN 1 ELSE 0 END) - SUM(CASE WHEN lrd.approval = 1 THEN 1 ELSE 0 END) AS quota'),
+                DB::raw('COUNT(md.id) AS total')
+            ])
+            ->leftJoin('manager_on_duty AS md', 'si.FID', '=', 'md.id_staff')
+            ->leftJoin(DB::raw('(
+                SELECT 
+                    id_mod,
+                    MAX(id) AS latest_leave_request_id
+                FROM 
+                    leave_request_dp
+                GROUP BY 
+                    id_mod
+            ) AS latest_leave_request'), 'md.id', '=', 'latest_leave_request.id_mod')
+            ->leftJoin('leave_request_dp AS lrd', 'latest_leave_request.latest_leave_request_id', '=', 'lrd.id')
+            ->where(function ($query) {
+                $query->where('md.expire', '>', DB::raw('NOW()'))
+                    ->orWhereNull('md.expire');
+            })
+            ->where('si.Fid', Auth::user()->id_staff)
+            ->groupBy('si.FID', 'si.Nama')
+            ->orderBy('si.Nama', 'ASC')
+            ->first();
+
+        $dpBalance = [];
+        if ($dp) {
+            $dpBalance[] = [
+                'id' => 'quota',
+                'label' => 'Quota',
+                'value' => $dp->quota,
+                'color' => 'hsl(130, 70%, 50%)'
+
+            ];
+            $dpBalance[] = [
+                'id' => 'used',
+                'label' => 'Used',
+                'value' => $dp->used,
+                'color' => 'hsl(221, 70%, 50%)'
+            ];
+            $dpBalance[] = [
+                'id' => 'pending',
+                'label' => 'Pending',
+                'value' => $dp->pending,
+                'color' => 'hsl(54, 70%, 50%)'
+            ];
+        }
+        $eo = DB::table('hr_staff_info AS si')
+            ->select([
+                DB::raw('SUM(CASE WHEN lre.approval = 2 THEN 1 ELSE 0 END) AS used'),
+                DB::raw('SUM(CASE WHEN lre.approval = 1 THEN 1 ELSE 0 END) AS pending'),
+                DB::raw('COUNT(eo.id) - SUM(CASE WHEN lre.approval = 2 THEN 1 ELSE 0 END) - SUM(CASE WHEN lre.approval = 1 THEN 1 ELSE 0 END) AS quota'),
+                DB::raw('COUNT(eo.id) AS total')
+            ])
+            ->leftJoin('extra_off AS eo', 'si.FID', '=', 'eo.id_staff')
+            ->leftJoin(DB::raw('(
+                SELECT 
+                    id_eo,
+                    MAX(id) AS latest_leave_request_id
+                FROM 
+                    leave_request_eo
+                GROUP BY 
+                    id_eo
+            ) AS latest_leave_request'), 'eo.id', '=', 'latest_leave_request.id_eo')
+            ->leftJoin('leave_request_eo AS lre', 'latest_leave_request.latest_leave_request_id', '=', 'lre.id')
+            ->where(function ($query) {
+                $query->where('eo.expire', '>', DB::raw('NOW()'))
+                    ->orWhereNull('eo.expire');
+            })
+            ->where('si.Fid', Auth::user()->id_staff)
+            ->groupBy('si.FID', 'si.Nama')
+            ->orderBy('si.Nama', 'ASC')
+            ->first();
+
+        $eoBalance = [];
+        if ($eo) {
+            $eoBalance[] = [
+                'id' => 'quota',
+                'label' => 'Quota',
+                'value' => $eo->quota,
+                'color' => 'hsl(130, 70%, 50%)'
+
+            ];
+            $eoBalance[] = [
+                'id' => 'used',
+                'label' => 'Used',
+                'value' => $eo->used,
+                'color' => 'hsl(221, 70%, 50%)'
+            ];
+            $eoBalance[] = [
+                'id' => 'pending',
+                'label' => 'Pending',
+                'value' => $eo->pending,
+                'color' => 'hsl(54, 70%, 50%)'
+            ];
+        }
+        $al = DB::table('hr_staff_info AS si')
+            ->select([
+                DB::raw('SUM(CASE WHEN lra.approval = 2 THEN 1 ELSE 0 END) AS used'),
+                DB::raw('SUM(CASE WHEN lra.approval = 1 THEN 1 ELSE 0 END) AS pending'),
+                DB::raw('COUNT(al.id) - SUM(CASE WHEN lra.approval = 2 THEN 1 ELSE 0 END) - SUM(CASE WHEN lra.approval = 1 THEN 1 ELSE 0 END) AS quota'),
+                DB::raw('COUNT(al.id) AS total')
+            ])
+            ->leftJoin('annual_leave as al', 'si.FID', '=', 'al.id_staff')
+            ->leftJoin(DB::raw('(
+                SELECT 
+                    id_al,
+                    MAX(id) AS latest_leave_request_id
+                FROM 
+                    leave_request_al
+                GROUP BY 
+                    id_al
+            ) AS latest_leave_request'), 'al.id', '=', 'latest_leave_request.id_al')
+            ->leftJoin('leave_request_al AS lra', 'latest_leave_request.latest_leave_request_id', '=', 'lra.id')
+            ->where(function ($query) {
+                $query->where('al.expire', '>', DB::raw('NOW()'))
+                    ->orWhereNull('al.expire');
+            })
+            ->where('si.Fid', Auth::user()->id_staff)
+            ->groupBy('si.FID', 'si.Nama')
+            ->orderBy('si.Nama', 'ASC')
+            ->first();
+
+        $alBalance = [];
+        if ($al) {
             $alBalance[] = [
-                'id' => 'expired',
-                'label' => 'Expired',
-                'value' => $al->expired,
-                'color' => 'hsl(15, 70%, 50%)'
+                'id' => 'quota',
+                'label' => 'Quota',
+                'value' => $al->quota,
+                'color' => 'hsl(130, 70%, 50%)'
+            ];
+            $alBalance[] = [
+                'id' => 'used',
+                'label' => 'Used',
+                'value' => $al->used,
+                'color' => 'hsl(221, 70%, 50%)'
+            ];
+            $alBalance[] = [
+                'id' => 'pending',
+                'label' => 'Pending',
+                'value' => $al->pending,
+                'color' => 'hsl(54, 70%, 50%)'
             ];
         }
 
@@ -1644,41 +1768,168 @@ class LeavePermitController extends Controller
     public function download(Request $request){
         $id = $request->input('id');
         $ids = $request->input('ids');
+
+        $leave = DB::table('leave_request as lr')
+            ->select('lr.*')
+            ->where('lr.id', $id)
+            ->where('lr.status', 1)
+            ->first();
+
+        // $leave->request_date = date('l, d F Y', strtotime($leave->request_date));
+        $leave->created_at = date('d-m-Y H:i', strtotime($leave->request_date));
         
-        $browser = (new BrowserFactory())->createBrowser([
-            'windowSize' => [1920, 1080],
-        ]);
+        $dp = DB::table('leave_request as lr')
+            ->join('leave_request_dp as lrd', 'lr.id', '=', 'lrd.id_leave_request')
+            ->join('manager_on_duty as md', 'lrd.id_mod', '=', 'md.id')
+            ->select('lrd.id', 'lrd.date as date_replace', 'lrd.approval', 'md.date')
+            ->where('lr.id', $id)
+            ->where('md.id_staff', $ids)
+            ->where(function($query) {
+                $query->where('lrd.approval', 2)
+                    ->orWhere('lrd.approval', 1);
+            })
+            ->get();
 
-    try {
+        $dpAll = DB::table('manager_on_duty as md')
+            ->join('leave_request_dp as lrd', 'md.id', '=', 'lrd.id_mod')
+            ->select('md.*')
+            ->where('lrd.id_leave_request', $id)
+            ->get();
 
-        /* creates a new page and navigate to an URL */
-        $page = $browser->createPage();
-        $page->navigate(env('LINK')."/leave/view?id=".$id."&ids=".$ids)->waitForNavigation();
-        $pageTitle = $page->evaluate('document.title')->getReturnValue();
+        foreach($dp as $item){
+            $item->date = date('l, d F Y', strtotime($item->date));
+            $item->date_replace = date('l, d F Y', strtotime($item->date_replace));
+        }
 
-        $options = [
-            'landscape'           => true,
-            'printBackground'     => false,
-            'marginTop'           => 0.0, 
-            'marginBottom'        => 0.0, 
-            'marginLeft'          => 0.0,
-            'marginRight'         => 0.0, 
-            'headerTemplate'      => '<div class="grid justify-center">
-            test
-            </div>
-        </div>',
-        ];
+        $eo = DB::table('leave_request as lr')
+            ->join('leave_request_eo as lre', 'lr.id', '=', 'lre.id_leave_request')
+            ->join('extra_off as eo', 'lre.id_eo', '=', 'eo.id')
+            ->select('lre.id','lre.date as date_replace', 'lre.approval', 'eo.date')
+            ->where('lr.id', $id)
+            ->where('eo.id_staff', $ids)
+            ->where(function($query) {
+                $query->where('lre.approval', 2)
+                    ->orWhere('lre.approval', 1);
+            })
+            ->get();
 
-        $name = public_path("uploads/".time().'.pdf');
-        $page->pdf($options)->saveToFile($name);
+        $eoAll = DB::table('extra_off as eo')
+            ->join('leave_request_eo as lre', 'eo.id', '=', 'lre.id_eo')
+            ->select('eo.*')
+            ->where('lre.id_leave_request', $id)
+            ->get();
 
-        return response()->download($name);
+        foreach($eo as $item){
+            $item->date = date('l, d F Y', strtotime($item->date));
+            $item->date_replace = date('l, d F Y', strtotime($item->date_replace));
+        }
 
-    } finally {
+        $al = DB::table('leave_request as lr')
+            ->join('leave_request_al as lra', 'lr.id', '=', 'lra.id_leave_request')
+            ->join('annual_leave as al', 'lra.id_al', '=', 'al.id')
+            ->select('lra.id', 'lra.date as date_replace', 'lra.approval', 'al.date')
+            ->where('lr.id', $id)
+            ->where('al.id_staff', $ids)
+            ->where(function($query) {
+                $query->where('lra.approval', 2)
+                    ->orWhere('lra.approval', 1);
+            })
+            ->get();
 
-        $browser->close();
+        $alAll = DB::table('annual_leave as al')
+            ->join('leave_request_al as lra', 'al.id', '=', 'lra.id_al')
+            ->select('al.*')
+            ->where('lra.id_leave_request', $id)
+            ->get();
 
-    }
+        foreach($al as $item){
+            $item->date = date('l, d F Y', strtotime($item->date));
+            $item->date_replace = date('l, d F Y', strtotime($item->date_replace));
+        }
+
+        $staff = DB::table('staff as si')
+            ->join('hr_unit as u', 'si.id_unit', '=', 'u.IdUnit')
+            ->select('si.name', 'si.position', 'u.Namaunit as unit')
+            ->where('si.id', $ids)
+            ->first();
+
+            $staff->position = mb_convert_case($staff->position, MB_CASE_TITLE, 'UTF-8');
+            $staff->unit = mb_convert_case($staff->unit, MB_CASE_TITLE, 'UTF-8');
+
+        $users = DB::table('leave_request_update as lru')
+            ->join('users as u', 'lru.id_user', '=', 'u.id')
+            ->join('staff as si', 'u.id_staff', '=', 'si.id')
+            ->select('si.name', 'u.role', 'lru.created_at')
+            ->where('lru.id_leave_request', $id)
+            ->orderBy('lru.created_at', 'ASC')
+            ->get();
+        for($i = 0; $i < count($users); $i++){
+            $users[$i]->name = mb_convert_case($users[$i]->name, MB_CASE_TITLE, 'UTF-8');
+            $users[$i]->created_at = date('d-m-Y H:i', strtotime($users[$i]->created_at));
+        }
+
+        $quota = [];
+
+        $quota['dp']['outstanding'] = $leave->outstanding_dp;
+        $quota['dp']['validity'] = $dpAll->count();
+        $quota['dp']['approval'] = $dp->count();
+        $quota['dp']['balance'] = $leave->outstanding_dp - $dp->count();
+
+        $quota['eo']['outstanding'] = $leave->outstanding_eo;
+        $quota['eo']['validity'] = $eoAll->count();
+        $quota['eo']['approval'] = $eo->count();
+        $quota['eo']['balance'] = $leave->outstanding_eo - $eo->count();
+
+        $quota['al']['outstanding'] = $leave->outstanding_al;
+        $quota['al']['validity'] = $alAll->count();
+        $quota['al']['approval'] = $al->count();
+        $quota['al']['balance'] = $leave->outstanding_al - $al->count();
+        
+        // return view('leave', ['data' =>$leave, 'dp' => $dp, 'eo' => $eo, 'al' => $al, 'staff' => $staff, 'id'=> $id, 'ids' => $ids, 'users' => $users, 'quota' => $quota]);
+    
+        $dompdf = new Dompdf();
+        $dompdf->loadHtml(view('leave',[ 'data' =>$leave, 'dp' => $dp, 'eo' => $eo, 'al' => $al, 'staff' => $staff, 'id'=> $id, 'ids' => $ids, 'users' => $users, 'quota' => $quota])->render());
+        $dompdf->render();
+        return $dompdf->stream('leave_permit-'.now()->format('Y-m-d').'.pdf');
+        // Output the PDF to the browser for debugging purposes
+        return response()->streamDownload(function () use ($dompdf) {
+            echo $dompdf->output();
+        }, "out_of_duty-{$id}.pdf");
+        
+    //     $browser = (new BrowserFactory())->createBrowser([
+    //         'windowSize' => [1920, 1080],
+    //     ]);
+
+    // try {
+
+    //     /* creates a new page and navigate to an URL */
+    //     $page = $browser->createPage();
+    //     $page->navigate(env('LINK')."/leave/view?id=".$id."&ids=".$ids)->waitForNavigation();
+    //     $pageTitle = $page->evaluate('document.title')->getReturnValue();
+
+    //     $options = [
+    //         'landscape'           => true,
+    //         'printBackground'     => false,
+    //         'marginTop'           => 0.0, 
+    //         'marginBottom'        => 0.0, 
+    //         'marginLeft'          => 0.0,
+    //         'marginRight'         => 0.0, 
+    //         'headerTemplate'      => '<div class="grid justify-center">
+    //         test
+    //         </div>
+    //     </div>',
+    //     ];
+
+    //     $name = public_path("uploads/".time().'.pdf');
+    //     $page->pdf($options)->saveToFile($name);
+
+    //     return response()->download($name);
+
+    // } finally {
+
+    //     $browser->close();
+
+    // }
         
         // return Pdf::view('leave', ['data' =>$leave, 'dp' => $dp, 'eo' => $eo, 'al' => $al, 'staff' => $staff, 'id'=> $id, 'ids' => $ids, 'users' => $users, 'quota' => $quota])
         //     ->format('a4')
