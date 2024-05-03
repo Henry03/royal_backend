@@ -253,6 +253,9 @@ Route::controller(LeavePermitController::class)->group(function() {
         Route::post('/user/noeo/all', 'indexNoEo');
         Route::post('/user/eoentitlement/store', 'storeEoEntitlement');
         Route::post('/user/eoentitlement/delete', 'deleteEoEntitlement');
+        Route::put('/user/dp/delete', 'deleteDp');
+        Route::put('/user/eo/delete', 'deleteEo');
+        Route::put('/user/al/delete', 'deleteAl');
     });
 
     Route::middleware(['auth:sanctum', 'ability:5'])->group(function () {

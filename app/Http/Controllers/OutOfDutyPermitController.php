@@ -2,6 +2,7 @@
 
 namespace App\Http\Controllers;
 
+use Dompdf\Dompdf;
 use HeadlessChromium\BrowserFactory;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
@@ -567,6 +568,46 @@ class OutOfDutyPermitController extends Controller
         $id = $request->input('id');
         $ids = $request->input('ids');
 
+        $data = DB::table('out_of_duty AS od')
+        ->join('hr_staff_info AS si', 'od.id_staff', '=', 'si.FID')
+        ->select('si.Nama AS name', 'od.*')
+        ->where('id', $id)
+        ->where('status', 1)
+        ->where('track', '>=', 1)
+        ->where('od.id_staff', $ids)
+        ->first();
+
+        $user = DB::table('out_of_duty_update AS ou')
+        ->join('users AS u', 'ou.id_user', '=', 'u.id')
+        ->join('hr_staff_info AS si', 'u.id_staff', '=', 'si.FID')
+        ->select('si.Nama AS name', 'u.role', 'ou.*')
+        ->where('ou.id_out_of_duty', $id)
+        ->get();
+
+        $data->date = date('l, d F Y', strtotime($data->start_date));
+        $data->start_time = date('H:m', strtotime($data->start_date));
+        $data->end_time = date('H:m', strtotime($data->end_date));
+        $data->name = mb_convert_case($data->name, MB_CASE_TITLE, 'UTF-8');
+        for($i = 0; $i < count($user); $i++){
+            $user[$i]->name = mb_convert_case($user[$i]->name, MB_CASE_TITLE, 'UTF-8');
+        }
+
+        $dompdf = new Dompdf();
+        $dompdf->loadHtml(view('outofduty', ['data' => $data, 'users' => $user, 'id' => $id, 'ids' => $ids])->render());
+        $dompdf->render();
+        // return(view('outofduty', ['data' => $data, 'users' => $user])->render());
+        return $dompdf->stream('out_of_duty-'.now()->format('Y-m-d').'.pdf');
+        // Output the PDF to the browser for debugging purposes
+        return response()->streamDownload(function () use ($dompdf) {
+            echo $dompdf->output();
+        }, "out_of_duty-{$id}.pdf");
+
+        // $dompdf = new Dompdf();
+
+        // $dompdf->setPaper('A4', 'landscape');
+        // $dompdf->loadHtml(view('outofduty', ['data' => $data, 'users' => $user])->render());
+        // return $dompdf->stream(view('outofduty', ['data' => $data, 'users' => $user])->render());
+
         // return Pdf::view('outofduty', ['data' => $data, 'users' => $user])
         //     ->format('a4')
         //     ->name('out_of_duty-'.now()->format('Y-m-d').'.pdf')
@@ -577,42 +618,42 @@ class OutOfDutyPermitController extends Controller
 
         
 
-        $browser = (new BrowserFactory())->createBrowser([
-                'windowSize' => [1920, 1080],
-            ]);
+        // $browser = (new BrowserFactory("C:\Users\henry\cache\puppeteer\chrome-headless-shell\win64-123.0.6312.122\chrome-headless-shell-win64\chrome-headless-shell.exe"))->createBrowser([
+        //         'windowSize' => [1920, 1080],
+        //     ]);
 
-        try {
+        // try {
 
-            /* creates a new page and navigate to an URL */
-            $page = $browser->createPage();
-            $page->navigate(env('LINK')."/outofduty/view?id=".$id."&ids=".$ids)->waitForNavigation();
-            $pageTitle = $page->evaluate('document.title')->getReturnValue();
+        //     /* creates a new page and navigate to an URL */
+        //     $page = $browser->createPage();
+        //     $page->navigate(env('LINK')."/outofduty/view?id=".$id."&ids=".$ids)->waitForNavigation();
+        //     $pageTitle = $page->evaluate('document.title')->getReturnValue();
 
-            $options = [
-                'landscape'           => true,
-                'printBackground'     => false,
-                'marginTop'           => 0.0, 
-                'marginBottom'        => 0.0, 
-                'marginLeft'          => 0.0,
-                'marginRight'         => 0.0, 
-                'headerTemplate'      => '<div class="grid justify-center">
-                <div class="w-fit">
-                {!! QrCode::size(128)->merge("/public/storage/Logo.png")
-                    ->generate("http://192.168.77.209/royal_backend/public/outofduty/download?id={$data->id}&ids={$data->id_staff}") 
-                !!}
-                </div>
-            </div>',
-            ];
+        //     $options = [
+        //         'landscape'           => true,
+        //         'printBackground'     => false,
+        //         'marginTop'           => 0.0, 
+        //         'marginBottom'        => 0.0, 
+        //         'marginLeft'          => 0.0,
+        //         'marginRight'         => 0.0, 
+        //         'headerTemplate'      => '<div class="grid justify-center">
+        //         <div class="w-fit">
+        //         {!! QrCode::size(128)->merge("/public/storage/Logo.png")
+        //             ->generate("http://192.168.77.209/royal_backend/public/outofduty/download?id={$data->id}&ids={$data->id_staff}") 
+        //         !!}
+        //         </div>
+        //     </div>',
+        //     ];
 
-            $name = public_path("uploads/".time().'.pdf');
-            $page->pdf($options)->saveToFile($name);
+        //     $name = public_path("uploads/".time().'.pdf');
+        //     $page->pdf($options)->saveToFile($name);
 
-            return response()->download($name);
+        //     return response()->download($name);
 
-        } finally {
+        // } finally {
 
-            $browser->close();
+        //     $browser->close();
 
-        }
+        // }
     }
 }

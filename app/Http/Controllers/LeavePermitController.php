@@ -1751,4 +1751,76 @@ class LeavePermitController extends Controller
             'data' => null
         ], 422);
     }
+
+    public function deleteDP (Request $request) {
+        $input = $request->validate([
+            'id' => 'required|integer'
+        ]);
+
+        $data = DB::table('manager_on_duty')
+            ->where('id', $input['id'])
+            ->delete();
+
+        if($data){
+            return response()->json([
+                'status' => true,
+                'message' => 'Data Day Payment berhasil dihapus',
+                'data' => $data
+            ], 200);
+        }
+
+        return response()->json([
+            'status' => false,
+            'message' => 'Data Day Payment gagal dihapus',
+            'data' => null
+        ], 422);
+    }
+
+    public function deleteEo (Request $request) {
+        $input = $request->validate([
+            'id' => 'required|integer'
+        ]);
+
+        $data = DB::table('extra_off')
+            ->where('id', $input['id'])
+            ->delete();
+
+        if($data){
+            return response()->json([
+                'status' => true,
+                'message' => 'Data Extra Off berhasil dihapus',
+                'data' => $data
+            ], 200);
+        }
+
+        return response()->json([
+            'status' => false,
+            'message' => 'Data Extra Off gagal dihapus',
+            'data' => null
+        ], 422);
+    }
+
+    public function deleteAl (Request $request) {
+        $input = $request->validate([
+            'id' => 'required|integer'
+        ]);
+
+        $data = DB::table('annual_leave')
+            ->where('id', $input['id'])
+            ->delete();
+
+        if($data){
+            return response()->json([
+                'status' => true,
+                'message' => 'Data Annual Leave berhasil dihapus',
+                'data' => $data
+            ], 200);
+        }
+
+        return response()->json([
+            'status' => false,
+            'message' => 'Data Annual Leave gagal dihapus',
+            'data' => null
+        ], 422);
+    }
 }

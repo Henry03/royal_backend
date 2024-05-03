@@ -373,6 +373,14 @@ class StaffController extends Controller
     public function destroy (Request $request){
         $id = $request->input('id');
 
+        if($id == 1){
+            return response()->json([
+                'status' => false,
+                'message' => 'Cant delete superadmin user',
+                'data' => null
+            ], 422);
+        }
+
         $result = DB::table('hr_staff_info')
         ->where('FID', $id)
         ->delete();
