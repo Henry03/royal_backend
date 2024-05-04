@@ -176,6 +176,9 @@ Route::controller(AttendanceController::class)->group( function() {
     Route::middleware(['auth:sanctum', 'ability:6'])->group(function () {
         Route::post('/user/attendance', 'indexAll');
     });
+    Route::middleware(['auth:sanctum', 'ability:2,3,4'])->group(function () {
+        Route::post('/user/attendance/department', 'indexbyDepartment');
+    });
 });
 
 Route::controller(ManagerOnDutyController::class)->group( function() {
