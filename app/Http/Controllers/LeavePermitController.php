@@ -4,9 +4,11 @@ namespace App\Http\Controllers;
 
 use Dompdf\Dompdf;
 use HeadlessChromium\BrowserFactory;
+use Illuminate\Database\QueryException;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Validator;
 use Spatie\Browsershot\Browsershot;
 use Spatie\LaravelPdf\Facades\Pdf;
@@ -2008,16 +2010,47 @@ class LeavePermitController extends Controller
             'id' => 'required|integer'
         ]);
 
-        $data = DB::table('manager_on_duty')
-            ->where('id', $input['id'])
-            ->delete();
+        
 
-        if($data){
+        try{
+            $dataDelete = DB::table('manager_on_duty')
+                ->where('id', $input['id'])
+                ->delete();
+
+            $data = DB::table('manager_on_duty')
+            ->join('leave_request_dp as lrd', 'lrd.id_mod', '=', 'manager_on_duty.id')
+            ->where('id', $input['id'])
+            ->get();
+    
+            DB::table('log_activity')
+            ->insert([
+                'id_staff' => Auth::user()->id,
+                'description' => 'Delete Day Payment Quota with date = ['.$data->date.'] for staff id = ['.$input['id'].']',
+                'role' => Auth::user()->role,
+            ]);
+
+            if($dataDelete){
+                return response()->json([
+                    'status' => true,
+                    'message' => 'Data Day Payment berhasil dihapus',
+                    'data' => $data
+                ], 200);
+            }
+        }catch(QueryException $e){
+            if ($e->getCode() === '23000') { // Check if it's an integrity constraint violation
+                return response()->json([
+                    'status' => false,
+                    'message' => 'Cannot delete the record because it is referenced by other records.',
+                    'data' => null
+                ], 422);
+            }
+        
+            // For other types of exceptions, return a generic error message
             return response()->json([
-                'status' => true,
-                'message' => 'Data Day Payment berhasil dihapus',
-                'data' => $data
-            ], 200);
+                'status' => false,
+                'message' => 'An error occurred while deleting the record.',
+                'data' => null
+            ], 500);
         }
 
         return response()->json([
@@ -2032,16 +2065,44 @@ class LeavePermitController extends Controller
             'id' => 'required|integer'
         ]);
 
-        $data = DB::table('extra_off')
-            ->where('id', $input['id'])
-            ->delete();
+        try{
+            $data = DB::table('extra_off')
+                ->where('extra_off.id', $input['id'])
+                ->first();
+    
+            $dataDelete = DB::table('extra_off')
+                ->where('id', $input['id'])
+                ->delete();
 
-        if($data){
+            DB::table('log_activity')
+            ->insert([
+                'id_staff' => Auth::user()->id,
+                'description' => 'Delete Extra Off Quota with date = ['.$data->date.'] for staff id = ['.$data->id_staff.']',
+                'role' => Auth::user()->role,
+            ]);
+
+            if($dataDelete){
+                return response()->json([
+                    'status' => true,
+                    'message' => 'Data Annual Leave berhasil dihapus',
+                    'data' => $data
+                ], 200);
+            }
+        }catch(QueryException $e){
+            if ($e->getCode() === '23000') { // Check if it's an integrity constraint violation
+                return response()->json([
+                    'status' => false,
+                    'message' => 'Cannot delete the record because it is referenced by other records.',
+                    'data' => null
+                ], 422);
+            }
+        
+            // For other types of exceptions, return a generic error message
             return response()->json([
-                'status' => true,
-                'message' => 'Data Extra Off berhasil dihapus',
-                'data' => $data
-            ], 200);
+                'status' => false,
+                'message' => 'An error occurred while deleting the record.',
+                'data' => null
+            ], 500);
         }
 
         return response()->json([
@@ -2056,16 +2117,44 @@ class LeavePermitController extends Controller
             'id' => 'required|integer'
         ]);
 
-        $data = DB::table('annual_leave')
-            ->where('id', $input['id'])
-            ->delete();
+        try{
+            $data = DB::table('annual_leave')
+                ->where('annual_leave.id', $input['id'])
+                ->first();
+    
+            $dataDelete = DB::table('annual_leave')
+                ->where('id', $input['id'])
+                ->delete();
 
-        if($data){
+            DB::table('log_activity')
+            ->insert([
+                'id_staff' => Auth::user()->id,
+                'description' => 'Delete Annual Leave Quota with date = ['.$data->date.'] for staff id = ['.$data->id_staff.']',
+                'role' => Auth::user()->role,
+            ]);
+
+            if($dataDelete){
+                return response()->json([
+                    'status' => true,
+                    'message' => 'Data Annual Leave berhasil dihapus',
+                    'data' => $data
+                ], 200);
+            }
+        }catch(QueryException $e){
+            if ($e->getCode() === '23000') { // Check if it's an integrity constraint violation
+                return response()->json([
+                    'status' => false,
+                    'message' => 'Cannot delete the record because it is referenced by other records.',
+                    'data' => null
+                ], 422);
+            }
+        
+            // For other types of exceptions, return a generic error message
             return response()->json([
-                'status' => true,
-                'message' => 'Data Annual Leave berhasil dihapus',
-                'data' => $data
-            ], 200);
+                'status' => false,
+                'message' => 'An error occurred while deleting the record.',
+                'data' => null
+            ], 500);
         }
 
         return response()->json([
