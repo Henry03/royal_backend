@@ -592,6 +592,23 @@ class OutOfDutyPermitController extends Controller
             $user[$i]->name = mb_convert_case($user[$i]->name, MB_CASE_TITLE, 'UTF-8');
         }
 
+        while(count($user) < 2){
+            $newData = (object) [
+                'name' => ' ',
+                'role' => ' ',
+                'id_out_of_duty' => ' ',
+                'id_user' => ' ',
+                'track' => ' ',
+                'status' => ' ',
+                'created_at' => ' ',
+                'note' => ' ',
+                
+            ];
+
+            $user->push($newData);
+        }
+
+
         $dompdf = new Dompdf();
         $dompdf->loadHtml(view('outofduty', ['data' => $data, 'users' => $user, 'id' => $id, 'ids' => $ids])->render());
         $dompdf->render();

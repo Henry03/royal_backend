@@ -1870,6 +1870,22 @@ class LeavePermitController extends Controller
             $users[$i]->created_at = date('d-m-Y H:i', strtotime($users[$i]->created_at));
         }
 
+        while(count($users) < 2){
+            $newData = (object) [
+                'name' => ' ',
+                'role' => ' ',
+                'id_out_of_duty' => ' ',
+                'id_user' => ' ',
+                'track' => ' ',
+                'status' => ' ',
+                'created_at' => ' ',
+                'note' => ' ',
+                
+            ];
+
+            $users->push($newData);
+        }
+
         $quota = [];
 
         $quota['dp']['outstanding'] = $leave->outstanding_dp;

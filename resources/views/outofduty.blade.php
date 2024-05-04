@@ -189,6 +189,8 @@
                         
                         @elseif($user->role == 6)
                             <th class=" text-sm">HRD</th>
+                        @else
+                            <th class=" text-sm"></th>
                         @endif
                     @endforeach
                 </tr>

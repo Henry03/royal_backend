@@ -14,19 +14,26 @@ class LeaveUserController extends Controller
         $sort = $request->input('sort', 'desc');
 
         $data = DB::table('leave_request AS lr')
-            ->leftJoin('leave_request_dp as lrd', 'lrd.id_leave_request', '=', 'lr.id')
-            ->leftJoin('leave_request_eo as lre', 'lre.id_leave_request', '=', 'lr.id')
-            ->leftJoin('leave_request_al as lra', 'lra.id_leave_request', '=', 'lr.id')
-            ->leftJoin('manager_on_duty as md', 'md.id', '=', 'lrd.id_mod')
-            ->leftJoin('extra_off as eo', 'eo.id', '=', 'lre.id_eo')
-            ->leftJoin('annual_leave as al', 'al.id', '=', 'lra.id_al')
-            ->select('md.id_staff', 'lr.id', 'lr.request_date', 'lr.note', 'lr.status', 'lr.track')
-            ->groupBy('md.id_staff', 'lr.id', 'lr.request_date', 'lr.note', 'lr.status', 'lr.track') // Group by the primary key
-            ->where('md.id_staff', '=', Auth::user()->id_staff)
-            ->orWhere('eo.id_staff', '=', Auth::user()->id_staff)
-            ->orWhere('al.id_staff', '=', Auth::user()->id_staff)
-            ->orderBy($filter, $sort)
-            ->paginate(10);
+        ->leftJoin('leave_request_dp AS lrd', 'lrd.id_leave_request', '=', 'lr.id')
+        ->leftJoin('leave_request_eo AS lre', 'lre.id_leave_request', '=', 'lr.id')
+        ->leftJoin('leave_request_al AS lra', 'lra.id_leave_request', '=', 'lr.id')
+        ->leftJoin('manager_on_duty AS md', 'md.id', '=', 'lrd.id_mod')
+        ->leftJoin('extra_off AS eo', 'eo.id', '=', 'lre.id_eo')
+        ->leftJoin('annual_leave AS al', 'al.id', '=', 'lra.id_al')
+        ->join('staff AS si', function ($join) {
+            $join->on('si.id', '=', 'md.id_staff')
+                ->orOn('si.id', '=', 'eo.id_staff')
+                ->orOn('si.id', '=', 'al.id_staff');
+        })
+        ->select(DB::raw('CASE
+            WHEN md.id_staff IS NOT NULL THEN md.id_staff
+            WHEN eo.id_staff IS NOT NULL THEN eo.id_staff
+            ELSE al.id_staff
+        END AS id_staff'), 'lr.id', 'lr.request_date', 'lr.note', 'lr.status', 'lr.track')
+        ->where('si.id', '=', Auth::user()->id_staff)
+        ->groupBy('id_staff', 'lr.id', 'lr.request_date', 'lr.note', 'lr.status', 'lr.track')
+        ->orderBy($filter, $sort)
+        ->paginate(10);
 
         return response()->json([
             'status' => true,
