@@ -489,13 +489,18 @@ class StaffController extends Controller
             }
 
             $items[] = [
+                'id' => $index,
                 'name' => $rowData[0],
                 'nik' => $rowData[1],
                 'id_unit' => $unit,
                 'unit_name' => $department->Namaunit,
-                'position' => $rowData[3],
+                'position' => strtoupper($rowData[3]) ,
                 'entry_date' => Carbon::createFromFormat('d/m/Y', str_replace('\/', '/', $rowData[4]))->format('d/m/Y'),
                 'phone_number' => $rowData[5],
+                'nik_ktp' => $rowData[6],
+                'npwp' => $rowData[7],
+                'blood_type' => $rowData[8],
+                'birth_date' => $rowData[9],
             ];
         }
 
@@ -514,8 +519,11 @@ class StaffController extends Controller
             'data.*.id_unit' => 'required',
             'data.*.position' => 'required',
             'data.*.entry_date' => 'required|date_format:d/m/Y',
-            'data.*.phone_number' => 'required'
-
+            'data.*.phone_number' => 'required',
+            'data.*.nik_ktp' => 'required|numeric|digits:16',
+            'data.*.npwp' => 'nullable|regex:/^([\d]{2})[.]([\d]{3})[.]([\d]{3})[.][\d][-]([\d]{3})[.]([\d]{3})$/',
+            'data.*.blood_type' => 'required',
+            'data.*.birth_date' => 'required',
         ],[
             'data.*.entry_date.date_format' => 'The entry date does not match the format d/m/Y.',
         ]);
@@ -552,6 +560,10 @@ class StaffController extends Controller
                         'position' => $row['position'],
                         'entry_date' => Carbon::createFromFormat('d/m/Y', $row['entry_date'])->format('Y-m-d'),
                         'phone_number' => $row['phone_number'],
+                        'birth_date' => Carbon::createFromFormat('d/m/Y', $row['birth_date'])->format('Y-m-d'),
+                        'nik_ktp' => $row['nik_ktp'],
+                        'npwp' => $row['npwp'],
+                        'blood_type' => $row['blood_type'],
                         'status' => 'Active'
                     ]);
 
@@ -590,6 +602,10 @@ class StaffController extends Controller
                         'position' => $row['position'],
                         'entry_date' => Carbon::createFromFormat('d/m/Y', $row['entry_date'])->format('Y-m-d'),
                         'phone_number' => $row['phone_number'],
+                        'nik_ktp' => $row['nik_ktp'],
+                        'npwp' => $row['npwp'],
+                        'birth_date' => Carbon::createFromFormat('d/m/Y', $row['birth_date'])->format('Y-m-d'),
+                        'blood_type' => $row['blood_type'],
                         'status' => 'Active'
                     ]);
 

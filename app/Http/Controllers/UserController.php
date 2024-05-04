@@ -15,7 +15,8 @@ class UserController extends Controller
 
         $result = DB::table('hr_staff_info AS si')
         ->join('users AS u', 'si.FID', '=', 'u.id_staff')
-        ->select('u.id', 'si.FID AS FID', 'si.Nama AS Nama', 'si.NIK', 'u.username', 'u.role', 'si.JABATAN', 'si.TGL_MASUK', 'si.Notelp')
+        ->join('hr_unit AS hu', 'u.id_unit', '=', 'hu.IdUnit')
+        ->select('u.id', 'si.FID AS FID', 'si.Nama AS Nama', 'u.username', 'u.role', 'si.JABATAN', 'hu.NamaUnit as department')
         ->where('u.deleted_at', '=', null)
         ->where(function ($query) use ($search, $filter, $sort) {
             $query->where('si.Nama', 'like', '%'.$search.'%')
@@ -23,8 +24,9 @@ class UserController extends Controller
                 ->orWhere('u.username', 'like', '%'.$search.'%')
                 ->orWhere('u.role', 'like', '%'.$search.'%')
                 ->orWhere('si.JABATAN', 'like', '%'.$search.'%')
-                ->orderBy($filter, $sort);
+                ;
         })
+        ->orderBy($filter, $sort)
             ->paginate(10);
 
         return response()->json([
